@@ -57,8 +57,8 @@ private:
   Oxs_OwnedPointer<Oxs_Mesh> mesh_obj; // Mesh basket
   Oxs_ConstKey<Oxs_Mesh> mesh_key;
 
-  Oxs_MeshValue<OC_REAL8m> Ms;  // Saturation magnetization
-  Oxs_MeshValue<OC_REAL8m> Ms_inverse;  // 1/Ms
+  mutable Oxs_MeshValue<OC_REAL8m> Ms;  // Saturation magnetization
+  mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse;  // 1/Ms
   Oxs_OwnedPointer<Oxs_VectorField> m0; // Initial spin configuration
 
   // State-based outputs, maintained by the driver.  These are
@@ -200,6 +200,7 @@ protected:
 	     const char* argstr);     // Args
 
   void SetStartValues(Oxs_SimState& istate) const;
+  void SetStartValues(Oxs_Key<Oxs_SimState>& initial_state) const;
 
   virtual OC_BOOL Init();  // All children of Oxs_Driver *must* call
   /// this function in their Init() routines.  The main purpose

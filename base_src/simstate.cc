@@ -229,8 +229,10 @@ void Oxs_SimState::RestoreState
  String& export_MIF_info)
 { // Fill state from channel
   mesh = import_mesh;
-  Ms = import_Ms;
-  Ms_inverse = import_Ms_inverse;
+  Oxs_MeshValue<OC_REAL8m> import_Ms_temp(*Ms);
+  Oxs_MeshValue<OC_REAL8m> import_Ms_inverse_temp(*Ms_inverse);
+  Ms = &import_Ms_temp;
+  Ms_inverse = &import_Ms_inverse_temp;
 
   if(mesh==NULL || Ms==NULL || Ms_inverse==NULL) {
     String msg=String("NULL pointer input as parameter to"

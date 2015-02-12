@@ -20,6 +20,10 @@
 #include "oxswarn.h"
 #include "vectorfield.h"
 
+#ifdef YY_DEBUG
+#include <iostream>
+#endif
+
 /* End includes */
 
 // Revision information, set via CVS keyword substitution
@@ -574,12 +578,69 @@ void Oxs_Driver::SetStartValues (Oxs_SimState& istate) const
     istate.stage_elapsed_time    = start_stage_elapsed_time;
     istate.last_timestep         = start_last_timestep;
     istate.mesh = mesh_key.GetPtr();
-    istate.Ms = &Ms;
-    istate.Ms_inverse = &Ms_inverse;
+    // To circumvent the const regulation of Ms, construct a temporary
+    // variable using the value of Ms.
+    Oxs_MeshValue<OC_REAL8m> Ms_temp(Ms);
+    Oxs_MeshValue<OC_REAL8m> Ms_inverse_temp(Ms_inverse);
+    istate.Ms = &Ms_temp;
+    istate.Ms_inverse = &Ms_inverse_temp;
     m0->FillMeshValue(istate.mesh,istate.spin);
     // Insure that all spins are unit vectors
     OC_INDEX size = istate.spin.Size();
     for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
+  }
+}
+
+// The following routine is called by GetInitialState() in child classes.
+void Oxs_Driver::SetStartValues (Oxs_Key<Oxs_SimState>& initial_state) const
+{
+  OC_BOOL fresh_start = 1;
+  int rflag = director->GetRestartFlag();
+  Oxs_SimState& istate = initial_state.GetWriteReference(); // Write lock
+
+  if(rflag!=0) {
+    // If checkpoint file can be opened for reading,
+    // then restore state from there.  Otherwise either
+    // throw an error if rflag = 1, or else use
+    // start (initial) state values.
+    FILE *check = Nb_FOpen(checkpoint_file.c_str(),"r");
+    if(check!=NULL) {
+      fclose(check);
+      String MIF_info;
+      istate.RestoreState(checkpoint_file.c_str(),
+                          mesh_key.GetPtr(),&Ms,&Ms_inverse,
+                          director,MIF_info);
+      fresh_start = 0;
+    } else if(rflag==1) {
+      char bit[4000];
+      Oc_EllipsizeMessage(bit,sizeof(bit),checkpoint_file.c_str());
+      char buf[4500];
+      Oc_Snprintf(buf,sizeof(buf),
+                  "Unable to open requested checkpoint file"
+                  " \"%.4000s\"",bit);
+      throw Oxs_ExtError(this,String(buf));
+    }
+  }
+  if(fresh_start) {
+    istate.previous_state_id = 0;
+    istate.iteration_count       = start_iteration;
+    istate.stage_number          = start_stage;
+    istate.stage_iteration_count = start_stage_iteration;
+    istate.stage_start_time      = start_stage_start_time;
+    istate.stage_elapsed_time    = start_stage_elapsed_time;
+    istate.last_timestep         = start_last_timestep;
+    istate.mesh = mesh_key.GetPtr();
+
+    istate.Ms = &Ms;
+    istate.Ms_inverse = &Ms_inverse;
+    Ms = static_cast<const Oxs_MeshValue<OC_REAL8m>&>(Ms);
+    Ms_inverse = Ms_inverse;
+    m0->FillMeshValue(istate.mesh,istate.spin);
+    // Insure that all spins are unit vectors
+    OC_INDEX size = istate.spin.Size();
+    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
+
+    initial_state.GetReadReference();
   }
 }
 
@@ -1034,6 +1095,9 @@ OC_UINT4m Oxs_Driver::GetStage() const
 void Oxs_Driver::Run(vector<OxsRunEvent>& results,
                      OC_INT4m stage_increment)
 { // Called by director
+#ifdef YY_DEBUG
+  std::cerr << "Oxs_Driver::Run()." << endl;
+#endif
 
   if(current_state.GetPtr() == NULL) {
     // Current state is not initialized.
@@ -1145,6 +1209,9 @@ void Oxs_Driver::Run(vector<OxsRunEvent>& results,
     }
 
     if(step_taken) {
+#ifdef YY_DEBUG
+  std::cerr << "inside if(step_taken)." << endl;
+#endif
       const Oxs_SimState& cstate = current_state.GetReadReference();
       ++step_events;
       problem_status = OXSDRIVER_PS_INSIDE_STAGE;
@@ -1484,3 +1551,4 @@ Oxs_Driver::Fill__projection_outputs(const Oxs_SimState& state)
     }
   }
 }
+#undef YY_DEBUG

@@ -27,6 +27,11 @@
 #include "nb.h"
 #endif
 
+#define YY_DEBUG
+#ifdef YY_DEBUG
+#include <iostream>
+#endif
+
 /* End includes */
 
 // The following two routines make sure that all Oxs_Director
@@ -97,6 +102,9 @@ int Oxs_Director::ProbReset()
 
 void Oxs_Director::ProbRun(vector<OxsRunEvent>& results)
 { // Fills results with event list.  Throws exception on error.
+#ifdef YY_DEBUG
+  std::cerr<<"Oxs_Director::ProbRun()."<<endl;
+#endif
 
   if(driver==NULL) {
     OXS_THROW(Oxs_IncompleteInitialization,"no driver identified");
@@ -1326,7 +1334,7 @@ Oxs_Director::FindExistingSimulationState(OC_UINT4m id) const
 // then be accessed from the Oxs solver console (use '-tk 1 -console'
 // in Oxsii launch command) via the 'Oxs_DirectorDevelopTest count'
 // command.
-// #define DEVELOP_TEST
+#define DEVELOP_TEST
 
 #ifndef DEVELOP_TEST
 // Default NOP (inactive) code with error return
@@ -1362,3 +1370,7 @@ int Oxs_Director::DoDevelopTest(const String& in,String& out)
 #ifdef DEVELOP_TEST
 #undef DEVELOP_TEST
 #endif // DEVELOP_TEST
+
+#ifdef YY_DEBUG
+#undef YY_DEBUG
+#endif

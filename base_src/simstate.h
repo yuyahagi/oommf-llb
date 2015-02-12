@@ -79,8 +79,8 @@ public:
   /// so a circular dependency would occur if output.h included
   /// mesh.h, since mesh.h inherits from ext.h.
 
-  const Oxs_MeshValue<OC_REAL8m>* Ms;
-  const Oxs_MeshValue<OC_REAL8m>* Ms_inverse; // 1/Ms
+  Oxs_MeshValue<OC_REAL8m>* Ms;
+  Oxs_MeshValue<OC_REAL8m>* Ms_inverse; // 1/Ms
 
   Oxs_MeshValue<ThreeVector> spin;
 
