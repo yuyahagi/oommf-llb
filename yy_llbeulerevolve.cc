@@ -32,27 +32,21 @@
 
 #include "yy_llbeulerevolve.h"
 
+#define YY_DEBUG
+#ifdef YY_DEBUG
+#include <iostream>
+#endif
+
 // Oxs_Ext registration support
 OXS_EXT_REGISTER(YY_LLBEulerEvolve);
 
 /* End includes */
 
-void YY_LLBEulerEvolve::SetTemperature(OC_REAL8m newtemp)
+void YY_LLBEulerEvolve::SetTemperature(const Oxs_Mesh* mesh_, OC_REAL8m newtemp)
 {
   temperature = fabs(newtemp);   // no temperatures allowed below 0K
   kB_T = KBoltzmann * temperature;
-
-  // this is the never-changing part of the variance
-  // ORIG: hFluctVarConst = fabs(usealpha) / (1. + usealpha*usealpha); // ensure that the variance is a positive value
-  // ORIG: hFluctVarConst *= (2. * kB_T);                     // Variance = alpha/(1+alpha^2) * 2kB_T / (MU0*gamma*Ms)
-  hFluctVarConst = (2. * kB_T);                     // Variance = alpha/(1+alpha^2) * 2kB_T / (MU0*gamma*Ms)
-  // ORIG: hFluctVarConst /= (MU0*gamma);                     // Ms is not a constant, might vary for each cell
-  hFluctVarConst /= MU0;                  // Ms is not a constant, might vary for each cell
-
-  // by means of stochastic calculus (that is different from ordinary calculus) an additional deterministic term arises
-  // when integrating stochastic equations in an Euler-Scheme (This term is called the noise induced drift term)
-  // ORIG: inducedDriftConst = -hFluctVarConst * usegamma*usegamma * (1. + usealpha*usealpha);
-  inducedDriftConst = -hFluctVarConst;
+  FillHFluctConst(mesh_);
 }
 
 OC_REAL8m YY_LLBEulerEvolve::GetStageTemp
@@ -83,16 +77,17 @@ OC_REAL8m YY_LLBEulerEvolve::GetStageTemp
 
 // Constructor
 YY_LLBEulerEvolve::YY_LLBEulerEvolve(
-  const char* name,     // Child instance id
-  Oxs_Director* newdtr, // App director
-  const char* argstr)   // MIF input block parameters
-  : Oxs_TimeEvolver(name,newdtr,argstr),
-    min_timestep(0.),max_timestep(1e-10),
+    const char* name,     // Child instance id
+    Oxs_Director* newdtr, // App director
+    const char* argstr)   // MIF input block parameters
+    : Oxs_TimeEvolver(name,newdtr,argstr),
+    mesh_id(0), min_timestep(0.), max_timestep(1e-10),
     energy_accum_count_limit(25),
     energy_state_id(0),next_timestep(0.),
     KBoltzmann(1.38062e-23),
     iteration_Tcalculated(0),
-    has_tempscript(0)
+    has_tempscript(0),
+    isMs0Set(0)
 {
   // Process arguments
   // For now, it works with a fixed time step but there still are min_ and
@@ -126,33 +121,40 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
        " step_headroom value must be bigger than 0.");
   }
 
-  if(HasInitValue("alpha")) {
-    OXS_GET_INIT_EXT_OBJECT("alpha",Oxs_ScalarField,alpha_init);
+  if(HasInitValue("alpha_t")) {
+    OXS_GET_INIT_EXT_OBJECT("alpha_t",Oxs_ScalarField,alpha_t_init);
   } else {
-    alpha_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+    alpha_t_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
                           (MakeNew("Oxs_UniformScalarField",director,
                                    "value 0.5")));
+  }
+
+  if(HasInitValue("Tc")) {
+    OXS_GET_INIT_EXT_OBJECT("Tc",Oxs_ScalarField,Tc_init);
+  } else {
+    Tc_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+                          (MakeNew("Oxs_UniformScalarField",director,
+                                   "value 400")));
   }
 
   // User may specify either gamma_G (Gilbert) or
   // gamma_LL (Landau-Lifshitz).  Code uses "gamma"
   // which is LL form.
+  gamma_style = GS_INVALID;
   if(HasInitValue("gamma_G") && HasInitValue("gamma_LL")) {
     throw Oxs_Ext::Error(this,"Invalid Specify block; "
        "both gamma_G and gamma_LL specified.");
   } else if(HasInitValue("gamma_G")) {
-    throw Oxs_Ext::Error(this,"Invalid Specify block; "
-       "gamma_G not yet implemented.");
+    OXS_GET_INIT_EXT_OBJECT("gamma_G",Oxs_ScalarField,gamma_init);
+    gamma_style = GS_G;
   } else if(HasInitValue("gamma_LL")) {
     OXS_GET_INIT_EXT_OBJECT("gamma_LL",Oxs_ScalarField,gamma_init);
-    gamma = GetRealInitValue("gamma_LL");
+    gamma_style = GS_LL;
   } else {
     gamma_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
                           (MakeNew("Oxs_UniformScalarField",director,
-                                   "value 0.5")));
-    // TODO: gamma = 2.211e5/(1+alpha*alpha);
+                                   "value 2.211e5")));
   }
-  // TODO: gamma = fabs(gamma); // Force positive
 
   do_precess = GetIntInitValue("do_precess",1);
 
@@ -160,49 +162,44 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
   start_dm *= PI/180.; // Convert from deg to rad
 
   // here the new parameters are set up
-  if(HasInitValue("temperature") && HasInitValue("tempscript")) {
-    throw Oxs_ExtError(this,"Cannot specify both temperature and tempscript");
+  // The new parameters for thermal are set up here
+  if(HasInitValue("temperature")) {
+    // Get temperature of simulation
+    temperature = GetRealInitValue("temperature", 0.);
   }
-  OC_REAL8m starttemp = -1;
+
+  // Get time dependent multiplier to scale temperature
   if(HasInitValue("tempscript")) {
     has_tempscript=1;
-    String cmdoptreq = "stage";   // No option at present
+    String cmdoptreq = GetStringInitValue("tempscript_args",
+                                          "stage stage_time total_time");
     tempscript_opts.push_back(Nb_TclCommandLineOption("stage",1));
+    tempscript_opts.push_back(Nb_TclCommandLineOption("stage_time",1));
+    tempscript_opts.push_back(Nb_TclCommandLineOption("total_time",1));
     tempscript_cmd.SetBaseCommand(InstanceName(),
-                        director->GetMifInterp(),
-                GetStringInitValue("tempscript"),
-                Nb_ParseTclCommandLineRequest(InstanceName(),
-                                               tempscript_opts,
-                                               cmdoptreq));
-    starttemp = GetStageTemp(0);
-  } else {
-    has_tempscript=0;
-    starttemp = GetRealInitValue("temperature", 300.);
+				  director->GetMifInterp(),
+				  GetStringInitValue("tempscript"),
+				  Nb_ParseTclCommandLineRequest(InstanceName(),
+								 tempscript_opts,
+								 cmdoptreq));
   }
-  SetTemperature(starttemp);
 
+  // set temperature to zero to get an estimate for a reasonable stepsize
+  // or use it for comparison (acts like eulerevolve with temperature=0K)
   if(temperature == 0.){
-    min_timestep = 0.;      //set temperature to zero to get an estimate for a reasonable stepsize
-    max_timestep = 1e-10;   //or use it for comparison (acts like eulerevolve with temperature=0K)
+    min_timestep = 0.;    
+    max_timestep = 1e-10; 
   }
 
+  if(HasInitValue("uniform_seed")) {
+    uniform_seed = GetIntInitValue("uniform_seed");
+    has_uniform_seed = 1;
+  } else {
+    has_uniform_seed = 0;
+  }
 
-  // this is the never-changing part of the variance
-  // ORIG: hFluctVarConst = fabs(alpha) / (1. + alpha*alpha); // ensure that the variance is a positive value
-  // ORIG: hFluctVarConst *= (2. * kB_T);                     // Variance = alpha/(1+alpha^2) * 2kB_T / (MU0*gamma*Ms)
-  hFluctVarConst = (2. * kB_T);                     // Variance = alpha/(1+alpha^2) * 2kB_T / (MU0*gamma*Ms)
-  // ORIG: hFluctVarConst /= (MU0*gamma);                     // Ms is not a constant, might vary for each cell
-  hFluctVarConst /= MU0;                     // Ms is not a constant, might vary for each cell
-
-  // by means of stochastic calculus (that is different from ordinary calculus) an additional deterministic term arises
-  // when integrating stochastic equations in an Euler-Scheme (This term is called the noise induced drift term)
-  //inducedDriftConst = -hFluctVarConst * gamma*gamma * (1. + alpha*alpha);
-  inducedDriftConst = -hFluctVarConst;
-
-  ito_calculus = GetIntInitValue("ito_calculus",0);  // in Ito calculus no drift term appears, default=false
-
-  uniform_seed = GetIntInitValue("uniform_seed", -1);
-  if (uniform_seed > 0) { uniform_seed = uniform_seed * -1;} //negative seed-value is needed by method
+  // in Ito calculus no drift term appears, default=false
+  ito_calculus = GetIntInitValue("ito_calculus",0);
 
   gaus2_isset = 0;    //no gaussian random numbers calculated yet
 
@@ -213,7 +210,9 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
      &YY_LLBEulerEvolve::UpdateDerivedOutputs);
   delta_E_output.Setup(this,InstanceName(),"Delta E","J",0,
      &YY_LLBEulerEvolve::UpdateDerivedOutputs);
-  dm_dt_output.Setup(this,InstanceName(),"dm/dt","rad/s",1,
+  dm_dt_t_output.Setup(this,InstanceName(),"Trans. dm/dt","rad/s",1,
+     &YY_LLBEulerEvolve::UpdateDerivedOutputs);
+  dm_dt_l_output.Setup(this,InstanceName(),"Long. dm/dt","rad/s",1,
      &YY_LLBEulerEvolve::UpdateDerivedOutputs);
   mxH_output.Setup(this,InstanceName(),"mxH","A/m",1,
      &YY_LLBEulerEvolve::UpdateDerivedOutputs);
@@ -227,77 +226,134 @@ OC_BOOL YY_LLBEulerEvolve::Init()
   max_dm_dt_output.Register(director,-5);
   dE_dt_output.Register(director,-5);
   delta_E_output.Register(director,-5);
-  dm_dt_output.Register(director,-5);
+  dm_dt_t_output.Register(director,-5);
+  dm_dt_l_output.Register(director,-5);
   mxH_output.Register(director,-5);
 
   // dm_dt and mxH output caches are used for intermediate storage,
   // so enable caching.
-  dm_dt_output.CacheRequestIncrement(1);
+  dm_dt_t_output.CacheRequestIncrement(1);
+  dm_dt_l_output.CacheRequestIncrement(1);
   mxH_output.CacheRequestIncrement(1);
 
-  alpha.Release();
+  alpha_t0.Release(); alpha_t.Release(); alpha_l.Release();
   gamma.Release();
+  Tc.Release();
+  Ms0.Release();
+  energy.Release();
+  total_field.Release();
+  new_energy.Release();
+  new_dm_dt_t.Release();
+  new_dm_dt_l.Release();
+
+  hFluct_t.Release(); hFluct_l.Release();
+  hFluctVarConst_t.Release(); hFluctVarConst_l.Release();
+  inducedDriftConst_t.Release(); inducedDriftConst_l.Release();
+
 
   energy_state_id=0;   // Mark as invalid state
   next_timestep=0.;    // Dummy value
   energy_accum_count=energy_accum_count_limit; // Force cold count
-  /// on first pass
+  // on first pass
 
-  //Uniform_Random(uniform_seed); //initialize Random number generator
-  // TODO: Do we need to initialize the random number generator feed?
+  isMs0Set = 0;
+
+  // (Re)initialize random number generator
+  if(has_uniform_seed) {
+    Oc_Srand(uniform_seed); //initialize Random number generator
+  } else {
+    // Default seed value is time dependent
+    Oc_Srand();
+  }
 
   return Oxs_TimeEvolver::Init();  // Initialize parent class.
-  /// Do this after child output registration so that
-  /// UpdateDerivedOutputs gets called before the parent
-  /// total_energy_output update function.
+  // Do this after child output registration so that
+  // UpdateDerivedOutputs gets called before the parent
+  // total_energy_output update function.
 }
-
 
 YY_LLBEulerEvolve::~YY_LLBEulerEvolve()
 {}
 
-
-void YY_LLBEulerEvolve::Calculate_dm_dt(const Oxs_Mesh& mesh_,
-    const Oxs_MeshValue<OC_REAL8m>& Ms_,
+void YY_LLBEulerEvolve::Calculate_dm_dt(
+    const Oxs_SimState& state_,
     const Oxs_MeshValue<ThreeVector>& mxH_,
-    const Oxs_MeshValue<ThreeVector>& spin_,
-    OC_UINT4m iteration_now,
+    const Oxs_MeshValue<ThreeVector>& total_field_,
     OC_REAL8m pE_pt_,
-    Oxs_MeshValue<ThreeVector>& dm_dt_,
-    OC_REAL8m& max_dm_dt_,OC_REAL8m& dE_dt_,OC_REAL8m& min_timestep_)
+    Oxs_MeshValue<ThreeVector>& dm_dt_t_,
+    Oxs_MeshValue<ThreeVector>& dm_dt_l_,
+    OC_REAL8m& max_dm_dt_,
+    OC_REAL8m& dE_dt_,
+    OC_REAL8m& min_timestep_)
 {
-  // Imports: mesh_, Ms_, mxH_, spin_, pE_pt_
-  // Exports: dm_dt_, max_dm_dt_, dE_dt_
-  const OC_INDEX size = mesh_.Size(); // Assume all imports are compatible
+  // Imports: state_, mxH_, pE_pt
+  // Exports: dm_dt_t_, dm_dt_l_, max_dm_dt_, dE_dt_
+#ifdef YY_DEBUG
+  std::cerr << "YY_LLBEulerEvolve::Calculate_dm_dt()." << endl;
+#endif
+  const Oxs_Mesh* mesh_ = state_.mesh;
+  const OC_INDEX size = mesh_->Size(); // Assume all imports are compatible
+  const Oxs_MeshValue<OC_REAL8m>& Ms_ = *(state_.Ms);
+  const Oxs_MeshValue<OC_REAL8m>& Ms_inverse_ = *(state_.Ms_inverse);
+  const Oxs_MeshValue<ThreeVector>& spin_ = state_.spin;
+  OC_UINT4m iteration_now = state_.iteration_count;
   ThreeVector scratch;
   ThreeVector dm_fluct;
-  ThreeVector inducedDrift;
-  OC_REAL8m hFluctSigma;
-  dm_dt_.AdjustSize(&mesh_);
+  ThreeVector inducedDrift_t;
+  ThreeVector inducedDrift_l;
+  OC_REAL8m hFluctSigma_t;
+  OC_REAL8m hFluctSigma_l;
+  dm_dt_t_.AdjustSize(mesh_);
+  dm_dt_l_.AdjustSize(mesh_);
   OC_INDEX i;
 
   iteration_now++;
   // if not done, hFluct for first step may be calculated too often
-  // TODO: Fix.
 
-  // the pointwise magnetic moment m_local[i] is needed for the stochastic terms
-  // if mesh has changed or m_local doesn't exist, create array and compute its values
-  // Ms_[i] does not change with time, so the values are computed once only
-  if (!m_local.CheckMesh(&mesh_)) {
-    m_local.AdjustSize(&mesh_);
-    for(i=0;i<size;i++){
-      m_local[i] = fabs(Ms_[i]) * mesh_.Volume(i);
+  // Fill out alpha and gamma meshvalue arrays, as necessary.
+  if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)
+     || !alpha_t.CheckMesh(mesh_)) {
+    std::cerr<<"fill."<<endl;
+    Ms0.AdjustSize(mesh_);
+    std::cerr<<"Ms_ size: "<<Ms_.Size()<<endl;
+    std::cerr<<"Ms0 size: "<<Ms0.Size()<<endl;
+    if(!isMs0Set) {
+      for(i=0; i<size; i++) {
+        Ms0[i] = Ms_[i]; // This will be kept for the whole simulation.
+      }
+      isMs0Set = 1;
     }
+    UpdateMeshArrays(mesh_);
+    total_field.AdjustSize(mesh_);
+    hFluctVarConst_t.AdjustSize(mesh_);
+    hFluctVarConst_l.AdjustSize(mesh_);
+    inducedDriftConst_t.AdjustSize(mesh_);
+    inducedDriftConst_l.AdjustSize(mesh_);
+    FillHFluctConst(mesh_);
+    InitHFluct(mesh_);
   }
 
 
-  // if mesh has changed or hFluct doesn't exist yet, create a compatible 
-  // array. In this case hFluct[i] MUST!! be computed, so force it
-  if (!hFluct.CheckMesh(&mesh_)) {
-    hFluct.AdjustSize(&mesh_);     
+  // TODO: Update temperature and the meshvalues accordingly.
+
+
+  // if mesh has changed or hFluct_t doesn't exist yet, create a compatible 
+  // array. In this case hFluct_t[i] MUST!! be computed, so force it
+  if (!hFluct_t.CheckMesh(mesh_)) {
+    hFluct_t.AdjustSize(mesh_);     
+    hFluct_l.AdjustSize(mesh_);     
     iteration_Tcalculated = 0;     
     }
 
+#ifdef YY_DEBUG
+  std::cerr<<"Test calcs"<<endl;
+  std::cerr<<"Ms_[10] = "<<Ms_[10]<<", Ms_inverse_[10] = "<<Ms_inverse_[10]<<endl;
+  std::cerr << "Calculating hFluct." << endl;
+#endif
+
+  // TODO: Calculation of coefficients are done here and at
+  // FillHFluctConst(). Depending on when the temperature and Ms are
+  // updated, try to put everything in one place. See line ~870.
   if (iteration_now > iteration_Tcalculated) {
     // i.e. if thermal field is not calculated for this step
     for(i=0;i<size;i++){
@@ -307,64 +363,91 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(const Oxs_Mesh& mesh_,
         // sqrt(alpha/(1+alpha^2) * 2*kB_t/(Ms*V*delta_t)) ->
         // this is the standard deviation of the gaussian distribution
         // used to represent the thermal perturbations
-        // ORIG: hFluctSigma = hFluctVarConst / m_local[i];
-        hFluctSigma = hFluctVarConst 
-          * fabs(alpha[i])/(1.+alpha[i]*alpha[i]) / (gamma[i]*m_local[i]);
-        hFluctSigma = sqrt(hFluctSigma / fixed_timestep);
+        hFluctSigma_t = hFluctVarConst_t[i] * Ms_inverse_[i];
+        hFluctSigma_t = sqrt(hFluctSigma_t / fixed_timestep);
+        hFluctSigma_l = hFluctVarConst_l[i] * Ms_inverse_[i];
+        hFluctSigma_l = sqrt(hFluctSigma_l / fixed_timestep);
 
         // create the stochastic (fluctuating) field  
         // that represents the thermal influence
-        hFluct[i].x = Gaussian_Random(0., hFluctSigma);
-        hFluct[i].y = Gaussian_Random(0., hFluctSigma);
-        hFluct[i].z = Gaussian_Random(0., hFluctSigma);
+        hFluct_t[i].x = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        hFluct_t[i].y = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        hFluct_t[i].z = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        hFluct_l[i].x = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
+        hFluct_l[i].y = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
+        hFluct_l[i].z = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
       }
     }
   }
 
+  OC_REAL8m temp;
   for(i=0;i<size;i++) {
     if(Ms_[i]==0) {
-      dm_dt_[i].Set(0.0,0.0,0.0);
+      dm_dt_t_[i].Set(0.0,0.0,0.0);
+      dm_dt_l_[i].Set(0.0,0.0,0.0);
     } else {
-      //deterministic part
+      OC_REAL8m cell_alpha_t = alpha_t[i];
+      OC_REAL8m cell_alpha_l = alpha_l[i];
+      OC_REAL8m cell_gamma = gamma[i];
+
+      // deterministic part
       scratch = mxH_[i];
-      scratch *= -fabs(gamma[i]);
+      scratch *= -cell_gamma; // -|gamma|*(mxH)
 
-      // additional drift term due to integration of a stochastic function
-      // -gamma^2 * sigma^2 * (1 + alpha^2) * m
-      // ORIG: inducedDrift = (inducedDriftConst / m_local[i]) * spin_[i];
-      inducedDrift = ( inducedDriftConst * gamma[i]*gamma[i]
-          * (1. + alpha[i]*alpha[i]) / (gamma[i]*m_local[i]) ) * spin_[i];
-
-      dm_fluct   = spin_[i] ^ hFluct[i];  // cross product mxhFluct
-      dm_fluct  *= -fabs(gamma[i]);                 // -|gamma|*mxhFluct
+      // TODO: This may ought be moved after dm_dt_t_[i] = scratch.
+      // In Garanin PRB 70, 212409 (2004), they suddenly omit the
+      // stochastic field in the first term without much explanation.
+      // In the subsequent papers from the group, no stochastic field
+      // in the first term is assumed either. At least in the stochastic
+      // LLG case, this makes a big difference. Watch out.
+      dm_fluct = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
+      dm_fluct *= -cell_gamma;
+      scratch += dm_fluct;  // -|gamma|*mx(H+hFluct_t)
 
       if(do_precess) {
-        dm_dt_[i]  = scratch;   //deterministic
-        dm_dt_[i] += dm_fluct;  //stochastic altering
+        dm_dt_t_[i]  = scratch;
+        dm_dt_l_[i].Set(0.0,0.0,0.0);
+      } else {
+        dm_dt_t_[i].Set(0.0,0.0,0.0);
+        dm_dt_l_[i].Set(0.0,0.0,0.0);
       }
-      else {
-        dm_dt_[i].Set(0.0,0.0,0.0);
-      }
-      scratch ^= spin_[i];    // -|gamma|((mxH)xm)
-      scratch *= -fabs(alpha[i]);       // |alpha.gamma|((mxH)xm) = -|alpha.gamma|(mx(mxH))
-      dm_fluct ^= spin_[i];   // stochastic part of damping term
-      dm_fluct *= -fabs(alpha[i]);
-      dm_dt_[i] += scratch;
-      dm_dt_[i] += dm_fluct;  // stochastic altering of the damping part
+
+      // Transverse damping term
+      scratch ^= spin_[i];
+      // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
+      scratch *= -cell_alpha_t; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
+      dm_dt_t_[i] += scratch;
+
       if (!ito_calculus){     // no additional drifting in Ito case
-        dm_dt_[i] += inducedDrift;
+        // additional drift terms due to integration of a stochastic 
+        // function
+        // -gamma^2 * sigma^2 * (1 + alpha^2) * m
+        inducedDrift_t = (inducedDriftConst_t[i]*Ms_inverse_[i])*spin_[i];
+        dm_dt_t_[i] += inducedDrift_t;
+      }
+
+      // Longitudinal terms
+      temp = spin_[i] * (total_field_[i] + hFluct_l[i]);  // dot product m.H
+      temp *= cell_gamma*cell_alpha_l;
+      scratch = temp*spin_[i];
+      dm_dt_l_[i] += scratch;
+
+      if (!ito_calculus){     // no additional drifting in Ito case
+        inducedDrift_l = (inducedDriftConst_l[i]*Ms_inverse_[i])*spin_[i];
+        dm_dt_l_[i] += inducedDrift_l;
+        // TODO: Longitudinal induced drift term?
       }
     }
   }
 
-  // now hFluct is definetely calculated for this iteration
+  // now hFluct_t is definetely calculated for this iteration
   iteration_Tcalculated = iteration_now;
 
   // Zero dm_dt at fixed spin sites
-  UpdateFixedSpinList(&mesh_);
+  UpdateFixedSpinList(mesh_);
   const OC_INDEX fixed_count = GetFixedSpinCount();
   for(OC_INDEX j=0;j<fixed_count;j++) {
-    dm_dt_[GetFixedSpin(j)].Set(0.,0.,0.); // TODO: What about pE_pt???
+    dm_dt_t_[GetFixedSpin(j)].Set(0.,0.,0.);
   }
 
   // Collect statistics
@@ -372,11 +455,10 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(const Oxs_Mesh& mesh_,
   OC_REAL8m dE_dt_sum=0.0;
   OC_INDEX max_index=0;
   for(i=0;i<size;i++) {
-    OC_REAL8m dm_dt_sq = dm_dt_[i].MagSq();
+    OC_REAL8m dm_dt_sq = dm_dt_t_[i].MagSq() + dm_dt_l_[i].MagSq();
     if(dm_dt_sq>0.0) {
-      //dE_dt_sum += mxH_[i].MagSq() * Ms_[i] * mesh_.Volume(i);
-      dE_dt_sum += -1*MU0*fabs(gamma[i]*alpha[i])
-        *mxH_[i].MagSq() * Ms_[i] * mesh_.Volume(i);
+      dE_dt_sum += -1*MU0*fabs(gamma[i]*alpha_t[i])
+        *mxH_[i].MagSq() * Ms_[i] * mesh_->Volume(i);
       if(dm_dt_sq>max_dm_dt_sq) {
         max_dm_dt_sq=dm_dt_sq;
         max_index = i;
@@ -385,29 +467,30 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(const Oxs_Mesh& mesh_,
   }
 
   max_dm_dt_ = sqrt(max_dm_dt_sq);
-  //dE_dt_ = -1 * MU0 * fabs(gamma*alpha) * dE_dt_sum + pE_pt_;
+  dE_dt_ = dE_dt_sum; // Transverse terms
   dE_dt_ += pE_pt_;
+  // TODO: What about the longitudinal terms?
   /// The first term is (partial E/partial M)*dM/dt, the
   /// second term is (partial E/partial t)*dt/dt.  Note that,
   /// provided Ms_[i]>=0, that by constructions dE_dt_sum above
   /// is always non-negative, so dE_dt_ can only be made positive
   /// by positive pE_pt_.
 
-  if(temperature == 0.){
+  if(temperature == 0.) {
     // Get bound on smallest stepsize that would actually
     // change spin new_max_dm_dt_index:
     OC_REAL8m min_ratio = DBL_MAX/2.;
-    if(fabs(dm_dt_[max_index].x)>=1.0 ||
-       min_ratio*fabs(dm_dt_[max_index].x) > fabs(spin_[max_index].x)) {
-     min_ratio = fabs(spin_[max_index].x/dm_dt_[max_index].x);
+    if(fabs(dm_dt_t_[max_index].x)>=1.0 ||
+       min_ratio*fabs(dm_dt_t_[max_index].x) > fabs(spin_[max_index].x)) {
+     min_ratio = fabs(spin_[max_index].x/dm_dt_t_[max_index].x);
     }
-   if(fabs(dm_dt_[max_index].y)>=1.0 ||
-      min_ratio*fabs(dm_dt_[max_index].y) > fabs(spin_[max_index].y)) {
-     min_ratio = fabs(spin_[max_index].y/dm_dt_[max_index].y);
+   if(fabs(dm_dt_t_[max_index].y)>=1.0 ||
+      min_ratio*fabs(dm_dt_t_[max_index].y) > fabs(spin_[max_index].y)) {
+     min_ratio = fabs(spin_[max_index].y/dm_dt_t_[max_index].y);
    }
-   if(fabs(dm_dt_[max_index].z)>=1.0 ||
-      min_ratio*fabs(dm_dt_[max_index].z) > fabs(spin_[max_index].z)) {
-      min_ratio = fabs(spin_[max_index].z/dm_dt_[max_index].z);
+   if(fabs(dm_dt_t_[max_index].z)>=1.0 ||
+      min_ratio*fabs(dm_dt_t_[max_index].z) > fabs(spin_[max_index].z)) {
+      min_ratio = fabs(spin_[max_index].z/dm_dt_t_[max_index].z);
     }
   min_timestep_ = min_ratio * OC_REAL8_EPSILON;
   }
@@ -423,6 +506,9 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
           const Oxs_DriverStepInfo& /* step_info */,
           Oxs_Key<Oxs_SimState>& next_state)
 {
+#ifdef YY_DEBUG
+  std::cerr << "YY_LLBEulerEvolve::Step()." << endl;
+#endif
   const OC_REAL8m max_step_increase = 1.25;
   const OC_REAL8m max_step_decrease = 0.5;
 
@@ -454,7 +540,8 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     UpdateDerivedOutputs(cstate);
   }
   OC_BOOL cache_good = 1;
-  OC_REAL8m max_dm_dt,dE_dt,delta_E,pE_pt;
+  OC_REAL8m max_dm_dt;
+  OC_REAL8m dE_dt, delta_E, pE_pt;
   OC_REAL8m timestep_lower_bound;  // Smallest timestep that can actually
   /// change spin with max_dm_dt (due to OC_REAL8_EPSILON restrictions).
   /// The next timestep is based on the error from the last step.  If
@@ -470,14 +557,16 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   cache_good &= cstate.GetDerivedData("Timestep lower bound",
               timestep_lower_bound);
   cache_good &= (energy_state_id == cstate.Id());
-  cache_good &= (dm_dt_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_t_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_l_output.cache.state_id == cstate.Id());
 
   if(!cache_good) {
     throw Oxs_Ext::Error(this,
        "YY_LLBEulerEvolve::Step: Invalid data cache.");
   }
 
-  const Oxs_MeshValue<ThreeVector>& dm_dt = dm_dt_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_t = dm_dt_t_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_l = dm_dt_l_output.cache.value;
 
   // Negotiate with driver over size of next step
   OC_REAL8m stepsize = next_timestep;
@@ -492,7 +581,8 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
    OC_BOOL forcestep=0;
   // Insure step is not outside requested step bounds
   if(stepsize<min_timestep) {
-    // the step has to be forced here,to make sure we don't produce an infinite loop
+    // the step has to be forced here,to make sure we don't produce
+    // an infinite loop
     stepsize = min_timestep;
     forcestep = 1;
     }
@@ -508,7 +598,7 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     workstate.stage_start_time = cstate.stage_start_time
                                 + cstate.stage_elapsed_time;
     workstate.stage_elapsed_time = workstate.last_timestep;
-    SetTemperature(GetStageTemp(workstate.stage_number));
+    SetTemperature(cstate.mesh,GetStageTemp(workstate.stage_number));
   } else {
     workstate.stage_start_time = cstate.stage_start_time;
     workstate.stage_elapsed_time = cstate.stage_elapsed_time
@@ -519,8 +609,8 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   driver->FillStateSupplemental(workstate);
 
   if(workstate.last_timestep>stepsize) {
-    // Either driver wants to force this stepsize (in order to end stage exactly at boundary),
-    // or else suggested stepsize is smaller than
+    // Either driver wants to force this stepsize (in order to end stage 
+    // exactly at boundary), or else suggested stepsize is smaller than
     // timestep_lower_bound.
     forcestep=1;
   }
@@ -529,9 +619,14 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   // Put new spin configuration in next_state
   workstate.spin.AdjustSize(workstate.mesh); // Safety
   size = workstate.spin.Size();
+  const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
+  const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
+  Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
+  Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
   ThreeVector tempspin;
   for(i=0;i<size;++i) {
-    tempspin = dm_dt[i];
+    // Transverse movement
+    tempspin = dm_dt_t[i];
     tempspin *= stepsize;
 
     // For improved accuracy, adjust step vector so that
@@ -541,19 +636,50 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     OC_REAL8m adj = 0.5 * tempspin.MagSq();
     tempspin -= adj*cstate.spin[i];
     tempspin *= 1.0/(1.0+adj);
-
     tempspin += cstate.spin[i];
+#ifdef YY_DEBUG
+    if(i==10) {
+      std::cerr<<"Before normalization."<<endl;
+      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
+      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
+    }
+#endif
     tempspin.MakeUnit();
+#ifdef YY_DEBUG
+    if(i==10) {
+      std::cerr<<"After normalization."<<endl;
+      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
+      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
+    }
+#endif
     workstate.spin[i] = tempspin;
+
+    // Longitudinal movement
+    tempspin = dm_dt_l[i]*stepsize;
+    tempspin += cstate.spin[i];
+#ifdef YY_DEBUG
+    if(i==10) {
+      std::cerr<<"Longitudinal change."<<endl;
+      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
+      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
+    }
+#endif
+
+    // TODO: Update Ms in the next state.
+    // Both of wMs and wMs_inverse should be updated at the same time.
+    //wMs[i] = sqrt(tempspin.MagSq())*cMs[i];
+    //wMs_inverse[i] = sqrt(tempspin.MagSq())*cMs_inverse[i];
   }
   const Oxs_SimState& nstate
     = next_state.GetReadReference();  // Release write lock
 
   //  Calculate delta E
   OC_REAL8m new_pE_pt;
+  // TODO: Add additional Heff terms in Eq (3) in PRB 85, 014433 (2012).
   GetEnergyDensity(nstate,new_energy,
        &mxH_output.cache.value,
-       NULL,new_pE_pt);
+       &total_field,
+       new_pE_pt);
   mxH_output.cache.state_id=nstate.Id();
   const Oxs_MeshValue<ThreeVector>& mxH = mxH_output.cache.value;
 
@@ -577,15 +703,24 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   // Get error estimate.  See step size adjustment discussion in
   // MJD Notes II, p72 (18-Jan-2001).
 
-  OC_REAL8m new_max_dm_dt,new_dE_dt,new_timestep_lower_bound;
-  Calculate_dm_dt(*(nstate.mesh),*(nstate.Ms),
-      mxH,nstate.spin,nstate.iteration_count,new_pE_pt,new_dm_dt,
-      new_max_dm_dt,new_dE_dt,new_timestep_lower_bound);
+  OC_REAL8m new_max_dm_dt;
+  OC_REAL8m new_dE_dt,new_timestep_lower_bound;
+  Calculate_dm_dt(
+      nstate, 
+      mxH, 
+      total_field, 
+      new_pE_pt, 
+      new_dm_dt_t,
+      new_dm_dt_l,
+      new_max_dm_dt, 
+      new_dE_dt, 
+      new_timestep_lower_bound);
 
   OC_REAL8m max_error=0;
   for(i=0;i<size;++i) { 
-    ThreeVector temp = dm_dt[i];
-    temp -= new_dm_dt[i];
+    ThreeVector temp = dm_dt_t[i] + dm_dt_l[i];
+    temp -= new_dm_dt_t[i];
+    temp -= new_dm_dt_l[i];
     OC_REAL8m temp_error = temp.MagSq();
     if(temp_error>max_error) max_error = temp_error;
   }
@@ -680,14 +815,90 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
        " Programming error; data cache already set.");
   }
 
-  dm_dt_output.cache.value.Swap(new_dm_dt);
-  dm_dt_output.cache.state_id = nstate.Id();
+  dm_dt_t_output.cache.value.Swap(new_dm_dt_t);
+  dm_dt_l_output.cache.value.Swap(new_dm_dt_l);
+  dm_dt_t_output.cache.state_id = nstate.Id();
+  dm_dt_l_output.cache.state_id = nstate.Id();
 
   energy.Swap(new_energy);
   energy_state_id = nstate.Id();
 
   return 1;  // Good step
 }   // end Step
+
+void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
+{
+  mesh_id = 0; // Mark update in progress
+  const OC_INDEX size = mesh->Size();
+  OC_INDEX i;
+
+  alpha_t_init->FillMeshValue(mesh,alpha_t0);
+  gamma_init->FillMeshValue(mesh,gamma);
+  Tc_init->FillMeshValue(mesh,Tc);
+  alpha_t.AdjustSize(mesh);
+  alpha_l.AdjustSize(mesh);
+
+  for(i=0;i<size;i++) {
+    alpha_t[i] = alpha_t0[i];
+    alpha_l[i] = 0.0;
+    //alpha_t[i] = alpha_t0[i]*(1-temperature/(3*Tc[i]));
+    //alpha_l[i] = alpha_t0[i]*2*temperature/(3*Tc[i]);
+  }
+
+  if(gamma_style == GS_G) { // Convert to LL form
+    for(i=0;i<size;++i) {
+      OC_REAL8m cell_alpha_t = alpha_t[i];
+      gamma[i] /= (1+cell_alpha_t*cell_alpha_t);
+    }
+  }
+
+  if(!allow_signed_gamma) {
+    for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
+  }
+
+  mesh_id = mesh->Id();
+}
+
+// TODO: Calculation of coefficients are done here and around line 390.
+// Depending on when the temperature and Ms are updated, try to put 
+// everything in one place.
+void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
+{
+  // Update variables that will be constant factors in the simulation
+  // h_fluctVarConst will store 2*kB*T*alpha/((1+alpha^2)*gamma*MU0*Vol*dt)
+  const OC_INDEX size = mesh->Size();
+  OC_REAL8m cell_alpha_t, cell_alpha_l, cell_gamma;
+  for(OC_INDEX i=0;i<size;i++) {
+    cell_alpha_t = fabs(alpha_t[i]);
+    cell_alpha_l = fabs(alpha_l[i]);
+    cell_gamma = fabs(gamma[i]);
+    hFluctVarConst_t[i] = cell_alpha_t/(1+cell_alpha_t*cell_alpha_t);     // 2*alpha/(1+alpha^2)
+    hFluctVarConst_t[i] *= 2.*KBoltzmann*temperature; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
+    hFluctVarConst_t[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
+    hFluctVarConst_l[i] = cell_alpha_l/(1+cell_alpha_l*cell_alpha_l);     // 2*alpha/(1+alpha^2)
+    hFluctVarConst_l[i] *= 2.*KBoltzmann*temperature; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
+    hFluctVarConst_l[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
+
+    // by means of stochastic calculus (that is different from ordinary calculus) an additional deterministic term arises
+    // when integrating stochastic equations in an Euler-Scheme (This term is called the noise induced drift term)
+    inducedDriftConst_t[i] = -hFluctVarConst_t[i]
+      *cell_gamma*cell_gamma*(1.+cell_alpha_t*cell_alpha_t);
+    inducedDriftConst_l[i] = -hFluctVarConst_l[i]
+      *cell_gamma*cell_gamma*(1.+cell_alpha_l*cell_alpha_l);
+  }
+}
+
+void YY_LLBEulerEvolve::InitHFluct(const Oxs_Mesh* mesh)
+{
+  const OC_INDEX size = mesh->Size();
+  hFluct_t.AdjustSize(mesh);
+  hFluct_l.AdjustSize(mesh);
+  for(OC_INDEX i=0;i<size;i++) {
+    hFluct_t[i].Set(0., 0., 0.);
+    hFluct_l[i].Set(0., 0., 0.);
+  }
+}
+
 
 void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
 { // This routine fills all the YY_LLBEulerEvolve Oxs_ScalarOutput's to
@@ -706,8 +917,10 @@ void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
      !state.GetDerivedData("Delta E",delta_E_output.cache.value) ||
      !state.GetDerivedData("pE/pt",dummy_value) ||
      !state.GetDerivedData("Timestep lower bound",dummy_value) ||
-     (dm_dt_output.GetCacheRequestCount()>0
-      && dm_dt_output.cache.state_id != state.Id()) ||
+     (dm_dt_t_output.GetCacheRequestCount()>0
+      && dm_dt_t_output.cache.state_id != state.Id()) ||
+     (dm_dt_l_output.GetCacheRequestCount()>0
+      && dm_dt_l_output.cache.state_id != state.Id()) ||
      (mxH_output.GetCacheRequestCount()>0
       && mxH_output.cache.state_id != state.Id())) {
 
@@ -716,7 +929,7 @@ void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
     // Calculate H and mxH outputs
     Oxs_MeshValue<ThreeVector>& mxH = mxH_output.cache.value;
     OC_REAL8m pE_pt;
-    GetEnergyDensity(state,energy,&mxH,NULL,pE_pt);
+    GetEnergyDensity(state,energy,&mxH,&total_field,pE_pt);
     energy_state_id=state.Id();
     mxH_output.cache.state_id=state.Id();
     if(!state.GetDerivedData("pE/pt",dummy_value)) {
@@ -724,15 +937,24 @@ void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
     }
 
     // Calculate dm/dt, Max dm/dt and dE/dt
-    Oxs_MeshValue<ThreeVector>& dm_dt
-      = dm_dt_output.cache.value;
-    dm_dt_output.cache.state_id=0;
+    Oxs_MeshValue<ThreeVector>& dm_dt_t
+      = dm_dt_t_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& dm_dt_l
+      = dm_dt_l_output.cache.value;
+    dm_dt_t_output.cache.state_id=0;
+    dm_dt_l_output.cache.state_id=0;
     OC_REAL8m timestep_lower_bound;
-    Calculate_dm_dt(*(state.mesh),*(state.Ms),mxH,state.spin,state.iteration_count,
-        pE_pt,dm_dt,
+    Calculate_dm_dt(
+        state,
+        mxH,
+        total_field,
+        pE_pt,
+        dm_dt_t,
+        dm_dt_l,
         max_dm_dt_output.cache.value,
         dE_dt_output.cache.value,timestep_lower_bound);
-    dm_dt_output.cache.state_id=state.Id();
+    dm_dt_t_output.cache.state_id=state.Id();
+    dm_dt_l_output.cache.state_id=state.Id();
     if(!state.GetDerivedData("Max dm/dt",dummy_value)) {
       state.AddDerivedData("Max dm/dt",max_dm_dt_output.cache.value);
     }
@@ -770,9 +992,11 @@ void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
 }   // end UpdateDerivedOutputs
 
 
-OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus, const OC_REAL8m sigmaGaus) {
-  // Box-Muller algorithm, see W.H. Press' "Numerical recipes" chapter7.2 for details
-  // the above generator is found there also
+OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus,
+    const OC_REAL8m sigmaGaus)
+{
+  // Box-Muller algorithm, see W.H. Press' "Numerical recipes" chapter7.2 
+  // for details.
   OC_REAL8m R, gaus1, FAC;
 
   if (!gaus2_isset) {
@@ -792,3 +1016,6 @@ OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus, const OC_RE
   gaus2_isset = false;
   return gaus2;
 }
+#ifdef YY_DEBUG
+#undef YY_DEBUG
+#endif

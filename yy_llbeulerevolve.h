@@ -1,6 +1,6 @@
 /** FILE: yy_llbeulerevolve.h                 -*-Mode: c++-*-
  *
- * Euler evolver class for Landau-Lifschitz-Bloch equation including thermal 
+ * Euler evolver class for Landau-Lifshitz-Bloch equation including thermal 
  * fluctuations. It is based on thetaevolve.cc and .h written by Oliver 
  * Lemcke released under GPLv2 license.
  *
@@ -36,6 +36,9 @@
 
 class YY_LLBEulerEvolve:public Oxs_TimeEvolver {
 private:
+  mutable OC_UINT4m mesh_id;     // Used by gamma and alpha meshvalues to
+  void UpdateMeshArrays(const Oxs_Mesh* mesh);
+
   // Base step size control parameters
   OC_REAL8m min_timestep;   // Seconds
   OC_REAL8m max_timestep;   // Seconds
@@ -81,13 +84,17 @@ private:
   const OC_UINT4m energy_accum_count_limit ;
   OC_UINT4m energy_accum_count;
 
-  // Spatially variable Landau-Lifschitz-Gilbert damping coef
+  // Spatially variable Landau-Lifshitz-Gilbert damping coef
   Oxs_OwnedPointer<Oxs_ScalarField> gamma_init;
   mutable Oxs_MeshValue<OC_REAL8m> gamma;       // LL gyromagnetic ratio
-  Oxs_OwnedPointer<Oxs_ScalarField> alpha_init;
-  mutable Oxs_MeshValue<OC_REAL8m> alpha;       // LL damping coef
+  Oxs_OwnedPointer<Oxs_ScalarField> alpha_t_init;
+  mutable Oxs_MeshValue<OC_REAL8m> alpha_t, alpha_t0;       // LL damping coef, transverse
+  mutable Oxs_MeshValue<OC_REAL8m> alpha_l;       // LL damping coef, longitudinal
+  // alpha_t0 is the value at T = 0 K.
   OC_BOOL do_precess;  // If false, then do pure damping
   OC_BOOL allow_signed_gamma; // If false, then force gamma negative
+  enum GammaStyle { GS_INVALID, GS_LL, GS_G }; // Landau-Lifshitz or Gilbert
+  GammaStyle gamma_style;
 
   // The next timestep is based on the error from the last step.  If
   // there is no last step (either because this is the first step,
@@ -107,16 +114,21 @@ private:
   **/
   const OC_REAL8m KBoltzmann;            // Boltzmann constant
   OC_REAL8m kB_T;                        // thermal energy
-  OC_REAL8m hFluctVarConst;             // constant part of the variance of the thermal field
-  Oxs_MeshValue<ThreeVector> hFluct; // current values of the thermal field
+  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_t;  // constant part of the variance of the thermal field
+  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_l;
+  Oxs_MeshValue<ThreeVector> hFluct_t; // current values of the thermal field
                                       // due to the fact, that dm_dt is sometimes calculated more
                                       // than one time per iteration these values are to be stored in an array
+  Oxs_MeshValue<ThreeVector> hFluct_l; // longitudinal
+  void FillHFluctConst(const Oxs_Mesh* mesh);
+  void InitHFluct(const Oxs_Mesh* mesh);
 
-  // the magnitude of each cells magnetic moment
-  Oxs_MeshValue<OC_REAL8m> m_local;      
+  Oxs_OwnedPointer<Oxs_ScalarField> Tc_init;
+  Oxs_MeshValue<OC_REAL8m> Tc;  // Currie temperature in Kelvin
 
   // constant part of the additional drift term that arises in stochastic caculus
-  OC_REAL8m inducedDriftConst;
+  Oxs_MeshValue<OC_REAL8m> inducedDriftConst_t;
+  Oxs_MeshValue<OC_REAL8m> inducedDriftConst_l;
   OC_REAL8m temperature;            // in Kelvin
   OC_UINT4m iteration_Tcalculated;  // keep in mind for which iteration the thermal field is already calculated
   OC_BOOL   ito_calculus;
@@ -126,7 +138,7 @@ private:
   /**
   Support for stage-varying temperature
   **/
-  void SetTemperature(OC_REAL8m newtemp);
+  void SetTemperature(const Oxs_Mesh* mesh_, OC_REAL8m newtemp);
   OC_BOOL has_tempscript;
   vector<Nb_TclCommandLineOption> tempscript_opts;
   Nb_TclCommand tempscript_cmd;
@@ -135,12 +147,17 @@ private:
   /**
   Variables for the Random distributions
   **/
-  OC_INT4m uniform_seed;  // seed to initialize the generator with, can be any integer
-                          // (beware: -|n| is used in this method)
-  OC_BOOL gaus2_isset;    // the here used gaussian distribution algorithm 
-                          // computes two values at a time, but only one is returned.
-  OC_REAL8m gaus2;        // Therefor the second value (plus a flag) must be stored outside the method itself,
-                          // to be returned when the method is called for the second time
+  // seed to initialize the generator with, can be any integer
+  // (beware: -|n| is used in this method)
+  OC_INT4m uniform_seed;  
+  OC_BOOL has_uniform_seed;
+
+  // the here used gaussian distribution algorithm 
+  // computes two values at a time, but only one is returned.
+  // Therefor the second value (plus a flag) must be stored outside the method itself,
+  // to be returned when the method is called for the second time
+  OC_BOOL gaus2_isset;    
+  OC_REAL8m gaus2;        
 
   /**
   Random functions (needed for temperature effects)
@@ -154,25 +171,31 @@ private:
   Oxs_ScalarOutput<YY_LLBEulerEvolve> max_dm_dt_output;
   Oxs_ScalarOutput<YY_LLBEulerEvolve> dE_dt_output;
   Oxs_ScalarOutput<YY_LLBEulerEvolve> delta_E_output;
-  Oxs_VectorFieldOutput<YY_LLBEulerEvolve> dm_dt_output;
+  Oxs_VectorFieldOutput<YY_LLBEulerEvolve> dm_dt_t_output;
+  Oxs_VectorFieldOutput<YY_LLBEulerEvolve> dm_dt_l_output;
   Oxs_VectorFieldOutput<YY_LLBEulerEvolve> mxH_output;
 
   // Scratch space
   Oxs_MeshValue<OC_REAL8m> new_energy;
-  Oxs_MeshValue<ThreeVector> new_dm_dt;
-  Oxs_MeshValue<ThreeVector> new_H;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_t;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_l;
+
+  Oxs_MeshValue<ThreeVector> total_field;
+  Oxs_MeshValue<OC_REAL8m> Ms0; // Ms at T = 0K.
+  OC_BOOL isMs0Set;
 
   void Calculate_dm_dt
-  (const Oxs_Mesh& mesh_,
-   const Oxs_MeshValue<OC_REAL8m>& Ms_,
+  (const Oxs_SimState& state_,
    const Oxs_MeshValue<ThreeVector>& mxH_,
-   const Oxs_MeshValue<ThreeVector>& spin_,
-   OC_UINT4m iteration_now,
+   const Oxs_MeshValue<ThreeVector>& total_field_,
    OC_REAL8m pE_pt_,
-   Oxs_MeshValue<ThreeVector>& dm_dt_,
-   OC_REAL8m& max_dm_dt_,OC_REAL8m& dE_dt_,OC_REAL8m& min_timestep_);
-  /// Imports: mesh_, Ms_, mxH_, spin_, pE_pt
-  /// Exports: dm_dt_, max_dm_dt_, max_dm_dt_index, dE_dt_
+   Oxs_MeshValue<ThreeVector>& dm_dt_t_,
+   Oxs_MeshValue<ThreeVector>& dm_dt_l_,
+   OC_REAL8m& max_dm_dt_,
+   OC_REAL8m& dE_dt_,
+   OC_REAL8m& min_timestep_);
+  /// Imports: state_, mxH_, pE_pt
+  /// Exports: dm_dt_t_, dm_dt_l_, max_dm_dt_, dE_dt_
 
 public:
   virtual const char* ClassName() const; // ClassName() is
