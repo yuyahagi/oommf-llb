@@ -9,3 +9,4 @@
 *.zip
 base_src/original/
 ext_src/original/
+.gdbinit

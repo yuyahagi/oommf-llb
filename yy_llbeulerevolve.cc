@@ -32,11 +32,6 @@
 
 #include "yy_llbeulerevolve.h"
 
-#define YY_DEBUG
-#ifdef YY_DEBUG
-#include <iostream>
-#endif
-
 // Oxs_Ext registration support
 OXS_EXT_REGISTER(YY_LLBEulerEvolve);
 
@@ -288,9 +283,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 {
   // Imports: state_, mxH_, pE_pt
   // Exports: dm_dt_t_, dm_dt_l_, max_dm_dt_, dE_dt_
-#ifdef YY_DEBUG
-  std::cerr << "YY_LLBEulerEvolve::Calculate_dm_dt()." << endl;
-#endif
   const Oxs_Mesh* mesh_ = state_.mesh;
   const OC_INDEX size = mesh_->Size(); // Assume all imports are compatible
   const Oxs_MeshValue<OC_REAL8m>& Ms_ = *(state_.Ms);
@@ -313,10 +305,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   // Fill out alpha and gamma meshvalue arrays, as necessary.
   if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)
      || !alpha_t.CheckMesh(mesh_)) {
-    std::cerr<<"fill."<<endl;
     Ms0.AdjustSize(mesh_);
-    std::cerr<<"Ms_ size: "<<Ms_.Size()<<endl;
-    std::cerr<<"Ms0 size: "<<Ms0.Size()<<endl;
     if(!isMs0Set) {
       for(i=0; i<size; i++) {
         Ms0[i] = Ms_[i]; // This will be kept for the whole simulation.
@@ -344,12 +333,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     hFluct_l.AdjustSize(mesh_);     
     iteration_Tcalculated = 0;     
     }
-
-#ifdef YY_DEBUG
-  std::cerr<<"Test calcs"<<endl;
-  std::cerr<<"Ms_[10] = "<<Ms_[10]<<", Ms_inverse_[10] = "<<Ms_inverse_[10]<<endl;
-  std::cerr << "Calculating hFluct." << endl;
-#endif
 
   // TODO: Calculation of coefficients are done here and at
   // FillHFluctConst(). Depending on when the temperature and Ms are
@@ -506,9 +489,6 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
           const Oxs_DriverStepInfo& /* step_info */,
           Oxs_Key<Oxs_SimState>& next_state)
 {
-#ifdef YY_DEBUG
-  std::cerr << "YY_LLBEulerEvolve::Step()." << endl;
-#endif
   const OC_REAL8m max_step_increase = 1.25;
   const OC_REAL8m max_step_decrease = 0.5;
 
@@ -619,10 +599,10 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   // Put new spin configuration in next_state
   workstate.spin.AdjustSize(workstate.mesh); // Safety
   size = workstate.spin.Size();
-  const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
-  const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
-  Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
-  Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
+  //const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
+  //const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
+  //Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
+  //Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
   ThreeVector tempspin;
   for(i=0;i<size;++i) {
     // Transverse movement
@@ -637,33 +617,12 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     tempspin -= adj*cstate.spin[i];
     tempspin *= 1.0/(1.0+adj);
     tempspin += cstate.spin[i];
-#ifdef YY_DEBUG
-    if(i==10) {
-      std::cerr<<"Before normalization."<<endl;
-      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
-      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
-    }
-#endif
     tempspin.MakeUnit();
-#ifdef YY_DEBUG
-    if(i==10) {
-      std::cerr<<"After normalization."<<endl;
-      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
-      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
-    }
-#endif
     workstate.spin[i] = tempspin;
 
     // Longitudinal movement
     tempspin = dm_dt_l[i]*stepsize;
     tempspin += cstate.spin[i];
-#ifdef YY_DEBUG
-    if(i==10) {
-      std::cerr<<"Longitudinal change."<<endl;
-      std::cerr<<"tempspin: "<<tempspin.x<<" "<<tempspin.y<<" "<<tempspin.z;
-      std::cerr<<", |tempspin|: "<<sqrt(tempspin.MagSq())<<endl;
-    }
-#endif
 
     // TODO: Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
@@ -1016,6 +975,3 @@ OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus,
   gaus2_isset = false;
   return gaus2;
 }
-#ifdef YY_DEBUG
-#undef YY_DEBUG
-#endif

@@ -20,10 +20,6 @@
 #include "oxswarn.h"
 #include "vectorfield.h"
 
-#ifdef YY_DEBUG
-#include <iostream>
-#endif
-
 /* End includes */
 
 // Revision information, set via CVS keyword substitution
@@ -1095,10 +1091,6 @@ OC_UINT4m Oxs_Driver::GetStage() const
 void Oxs_Driver::Run(vector<OxsRunEvent>& results,
                      OC_INT4m stage_increment)
 { // Called by director
-#ifdef YY_DEBUG
-  std::cerr << "Oxs_Driver::Run()." << endl;
-#endif
-
   if(current_state.GetPtr() == NULL) {
     // Current state is not initialized.
     String msg="Current state in Oxs_Driver is not initialized;"
@@ -1209,9 +1201,6 @@ void Oxs_Driver::Run(vector<OxsRunEvent>& results,
     }
 
     if(step_taken) {
-#ifdef YY_DEBUG
-  std::cerr << "inside if(step_taken)." << endl;
-#endif
       const Oxs_SimState& cstate = current_state.GetReadReference();
       ++step_events;
       problem_status = OXSDRIVER_PS_INSIDE_STAGE;
@@ -1551,4 +1540,3 @@ Oxs_Driver::Fill__projection_outputs(const Oxs_SimState& state)
     }
   }
 }
-#undef YY_DEBUG
