@@ -21,6 +21,8 @@
  *
  */
 
+#include <math.h>
+
 #include "nb.h"
 #include "director.h"
 #include "timedriver.h"
@@ -28,6 +30,7 @@
 #include "key.h"
 #include "energy.h"    // Needed to make MSVC++ 5 happy
 #include "meshvalue.h"
+#include "rectangularmesh.h"
 #include "scalarfield.h"
 
 #include "yy_llbeulerevolve.h"
@@ -363,7 +366,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     }
   }
 
-  OC_REAL8m temp;
   for(i=0;i<size;i++) {
     if(Ms_[i]==0) {
       dm_dt_t_[i].Set(0.0,0.0,0.0);
@@ -410,6 +412,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
 
       // Longitudinal terms
+      OC_REAL8m temp;
       temp = spin_[i] * (total_field_[i] + hFluct_l[i]);  // dot product m.H
       temp *= cell_gamma*cell_alpha_l;
       scratch = temp*spin_[i];
@@ -858,6 +861,41 @@ void YY_LLBEulerEvolve::InitHFluct(const Oxs_Mesh* mesh)
   }
 }
 
+OC_REAL8m YY_LLBEulerEvolve::Calculate_m_e(OC_REAL8m J,
+    OC_REAL8m T,
+    OC_REAL8m tol_in = 1e-4) const
+{
+  // Solve for the equilibrium spin polarization m_e using the Newton's
+  // method. Returns 0 when A <= 0 or A >= 1/3.
+  const OC_REAL8m A = KBoltzmann*T/J;
+  if(A <= 0 || A >= 1./3.) {
+    return 0;
+  }
+
+  const OC_REAL8m tol = fabs(tol_in);
+  OC_REAL8m x = 1.0/A;
+  OC_REAL8m y = Langevin(x)-A*x;
+  OC_REAL8m dy = LangevinDeriv(x)-A;
+  while(fabs(y)>tol) {
+    x -= y/dy;
+    y = Langevin(x)-A*x;
+    dy = LangevinDeriv(x)-A;
+  }
+  return x;
+}
+
+OC_REAL8m YY_LLBEulerEvolve::Langevin(OC_REAL8m x) const
+{
+  OC_REAL8m temp = exp(2*x)+1;
+  temp /= exp(2*x)-1; // temp == coth(x);
+  return temp-1/x;
+}
+
+OC_REAL8m YY_LLBEulerEvolve::LangevinDeriv(OC_REAL8m x) const
+{
+  OC_REAL8m temp = sinh(x);
+  return -1.0/(temp*temp)+1.0/(x*x);
+}
 
 void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
 { // This routine fills all the YY_LLBEulerEvolve Oxs_ScalarOutput's to

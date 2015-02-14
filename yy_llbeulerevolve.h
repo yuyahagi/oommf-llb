@@ -34,6 +34,8 @@
 
 /* End includes */
 
+#define DEFAULT_M_E_TOL 1e-4
+
 class YY_LLBEulerEvolve:public Oxs_TimeEvolver {
 private:
   mutable OC_UINT4m mesh_id;     // Used by gamma and alpha meshvalues to
@@ -126,6 +128,22 @@ private:
   Oxs_OwnedPointer<Oxs_ScalarField> Tc_init;
   Oxs_MeshValue<OC_REAL8m> Tc;  // Currie temperature in Kelvin
 
+  // Exchange parameter for longitudinal susceptibility
+  Oxs_OwnedPointer<Oxs_ScalarField> J_init;
+  Oxs_MeshValue<OC_REAL8m> J;
+
+  // Members for calculating m_e, equilibrium spin polarization at
+  // temperature T.
+  void CalculateLongField(const Oxs_SimState& state,
+      Oxs_MeshValue<ThreeVector>& longfield) const;
+  // Derivative of Langevin function
+  OC_REAL8m Langevin(OC_REAL8m x) const;
+  OC_REAL8m LangevinDeriv(OC_REAL8m x) const;
+  OC_REAL8m Calculate_m_e(OC_REAL8m J, OC_REAL8m T, OC_REAL8m tol) const;
+  OC_REAL8m Calculate_m_e(OC_REAL8m J, OC_REAL8m T) const {
+    return Calculate_m_e(J, T, DEFAULT_M_E_TOL);
+  }
+
   // constant part of the additional drift term that arises in stochastic caculus
   Oxs_MeshValue<OC_REAL8m> inducedDriftConst_t;
   Oxs_MeshValue<OC_REAL8m> inducedDriftConst_l;
@@ -215,4 +233,5 @@ public:
   // unable to step as requested.
 };
 
+#undef DEFAULT_M_E_TOL
 #endif // _YY_LLBEULEREVOLVE
