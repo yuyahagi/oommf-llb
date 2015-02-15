@@ -881,7 +881,7 @@ OC_REAL8m YY_LLBEulerEvolve::Calculate_m_e(OC_REAL8m J,
     y = Langevin(x)-A*x;
     dy = LangevinDeriv(x)-A;
   }
-  return x;
+  return A*x;
 }
 
 OC_REAL8m YY_LLBEulerEvolve::Langevin(OC_REAL8m x) const
