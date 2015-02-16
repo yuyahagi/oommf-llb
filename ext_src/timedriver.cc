@@ -71,32 +71,12 @@ Oxs_TimeDriver::GetInitialState() const
 {
   Oxs_Key<Oxs_SimState> initial_state;
   director->GetNewSimulationState(initial_state);
-  std::cerr<<"Before calling SetStartValues()."<<endl;
-  //{
-  //  const Oxs_SimState state = initial_state.GetWriteReference();
-  //  std::cerr<<"state = initial_state.GetWriteReference();"<<endl;
-  //  std::cerr<<"state Ms size: "<<state.Ms->Size()<<endl;
-  //  std::cerr<<"state mesh size: "<<state.mesh->Size()<<endl;
-  //} // mesh, Ms not ready yet.
   std::cerr<<"Calling modified SetStartValues()."<<endl;
+  // Call modified SetStartValues().
   SetStartValues(initial_state);
-  //initial_state.GetReadReference();  // Release write lock.
+  initial_state.GetReadReference();  // Release write lock.
   /// The read lock will be automatically released when the
   /// key "initial_state" is destroyed.
-  // YY Debug
-  Oxs_SimState& state = initial_state.GetWriteReference();
-  std::cerr<<"state = initial_state.GetWriteReference();"<<endl;
-
-  std::cerr<<"state Ms size: "<<state.Ms->Size()<<endl;
-  std::cerr<<"state mesh size: "<<state.mesh->Size()<<endl;
-
-  initial_state.GetReadReference();  // Release write lock.
-  if(state.Ms->Size()==0) {
-    throw Oxs_Ext::Error(this,
-        "Oxs_TimeDriver::GetInitialState(): Ms size error!");
-  } else {
-    std::cerr<<"Correct Ms size!"<<endl;
-  }
 
   return initial_state;
 }
