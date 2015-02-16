@@ -303,8 +303,10 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   const Oxs_MeshValue<OC_REAL8m>& Ms_inverse_ = *(state_.Ms_inverse);
   const Oxs_MeshValue<ThreeVector>& spin_ = state_.spin;
   OC_UINT4m iteration_now = state_.iteration_count;
-  ThreeVector scratch;
-  ThreeVector dm_fluct;
+  ThreeVector scratch_t;
+  ThreeVector scratch_l;
+  ThreeVector dm_fluct_t;
+  ThreeVector dm_fluct_l;
   OC_REAL8m hFluctSigma_t;
   OC_REAL8m hFluctSigma_l;
   dm_dt_t_.AdjustSize(mesh_);
@@ -318,9 +320,11 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)
      || !alpha_t.CheckMesh(mesh_)) {
     Ms0.AdjustSize(mesh_);
+    Ms0_inverse.AdjustSize(mesh_);
     if(!isMs0Set) {
       for(i=0; i<size; i++) {
         Ms0[i] = Ms_[i]; // This will be kept for the whole simulation.
+        Ms0_inverse[i] = Ms_inverse_[i];
       }
       isMs0Set = 1;
     }
@@ -329,7 +333,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     // Update temperature-dependent coefficients
     UpdateMeshArrays(mesh_);
     total_field.AdjustSize(mesh_);
-
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
     FillHFluctConst(mesh_);
@@ -350,7 +353,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   if (iteration_now > iteration_Tcalculated) {
     // i.e. if thermal field is not calculated for this step
     for(i=0;i<size;i++){
-      if(Ms_[i] != 0){                                      
+      if(Ms_[i] != 0){
         // only sqrt(delta_t) is multiplied for stochastic functions
         // opposed to dm_dt * delta_t for deterministic functions
         // sqrt(alpha/(1+alpha^2) * 2*kB_t/(Ms*V*delta_t)) ->
@@ -383,39 +386,45 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       OC_REAL8m cell_gamma = gamma[i];
 
       // deterministic part
-      scratch = mxH_[i];
-      scratch *= -cell_gamma; // -|gamma|*(mxH)
-
-      // TODO: This may ought be moved after dm_dt_t_[i] = scratch.
-      // In Garanin PRB 70, 212409 (2004), they suddenly omit the
-      // stochastic field in the first term without much explanation.
-      // In the subsequent papers from the group, no stochastic field
-      // in the first term is assumed either. At least in the stochastic
-      // LLG case, this makes a big difference. Watch out.
-      dm_fluct = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
-      dm_fluct *= -cell_gamma;
-      scratch += dm_fluct;  // -|gamma|*mx(H+hFluct_t)
+      scratch_t = mxH_[i];
+      scratch_t *= -cell_gamma; // -|gamma|*(mxH)
 
       if(do_precess) {
-        dm_dt_t_[i]  = scratch;
+        dm_dt_t_[i]  = scratch_t;
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       } else {
         dm_dt_t_[i].Set(0.0,0.0,0.0);
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       }
 
+      // Note: The stochastic field is NOT included in the first term of 
+      // the LLB equation. See PRB 85, 014433 (2012). Also, another form
+      // of LLB equation has been proposed in the article.
+      dm_fluct_t = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
+      dm_fluct_t *= -cell_gamma;
+      scratch_t += dm_fluct_t;  // -|gamma|*mx(H+hFluct_t)
+
       // Transverse damping term
-      scratch ^= spin_[i];
+      scratch_t ^= spin_[i];
       // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
-      scratch *= -cell_alpha_t; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
-      dm_dt_t_[i] += scratch;
+      scratch_t *= -cell_alpha_t*Ms0[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
+      dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
-      OC_REAL8m temp;
-      temp = spin_[i] * (total_field_[i] + hFluct_l[i]);  // dot product m.H
+      // Additional longitudinal field for LLB equation
+      OC_REAL8m temp = spin_[i]*total_field[i];
+      if(temperature[i] < Tc[i]) {
+        temp += 0.5/chi_l[i]
+          *(1-Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]*m_e[i]*m_e[i]))
+          *Ms_[i]*Ms0_inverse[i];
+      } else {
+        temp += -1.0/chi_l[i]
+          *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]))
+          *Ms_[i]*Ms0_inverse[i];
+      }
       temp *= cell_gamma*cell_alpha_l;
-      scratch = temp*spin_[i];
-      dm_dt_l_[i] += scratch;
+      scratch_l = temp*spin_[i];
+      dm_dt_l_[i] += scratch_l;
     }
   }
 
@@ -600,10 +609,10 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   // Put new spin configuration in next_state
   workstate.spin.AdjustSize(workstate.mesh); // Safety
   size = workstate.spin.Size();
-  //const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
-  //const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
-  //Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
-  //Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
+  const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
+  Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
+  Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
   ThreeVector tempspin;
   for(i=0;i<size;++i) {
     // Transverse movement
@@ -627,8 +636,14 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
 
     // TODO: Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
-    //wMs[i] = sqrt(tempspin.MagSq())*cMs[i];
-    //wMs_inverse[i] = sqrt(tempspin.MagSq())*cMs_inverse[i];
+    OC_REAL8m Ms_temp = wMs[i];
+    OC_REAL8m Ms_inverse_temp = wMs_inverse[i];
+    wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
+    if(wMs[i] != 0.0) {
+      wMs_inverse[i] = 1.0/wMs[i];
+    } else {
+      wMs_inverse[i] = 0.0;
+    }
   }
   const Oxs_SimState& nstate
     = next_state.GetReadReference();  // Release write lock
@@ -807,10 +822,8 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   alpha_l.AdjustSize(mesh);
 
   for(i=0;i<size;i++) {
-    alpha_t[i] = alpha_t0[i];
-    alpha_l[i] = 0.0;
-    //alpha_t[i] = alpha_t0[i]*(1-temperature/(3*Tc[i]));
-    //alpha_l[i] = alpha_t0[i]*2*temperature/(3*Tc[i]);
+    alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
+    alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
     
     kB_T[i] = KBoltzmann*temperature[i];
   }

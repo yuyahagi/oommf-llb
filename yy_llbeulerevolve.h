@@ -202,7 +202,7 @@ private:
   Oxs_MeshValue<ThreeVector> new_dm_dt_l;
 
   Oxs_MeshValue<ThreeVector> total_field;
-  Oxs_MeshValue<OC_REAL8m> Ms0; // Ms at T = 0K.
+  Oxs_MeshValue<OC_REAL8m> Ms0, Ms0_inverse; // Ms at T = 0K.
   OC_BOOL isMs0Set;
 
   void Calculate_dm_dt
