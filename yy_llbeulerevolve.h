@@ -146,9 +146,6 @@ private:
     return Update_m_e_chi_l(DEFAULT_M_E_TOL);
   }
 
-  // constant part of the additional drift term that arises in stochastic caculus
-  Oxs_MeshValue<OC_REAL8m> inducedDriftConst_t;
-  Oxs_MeshValue<OC_REAL8m> inducedDriftConst_l;
   Oxs_OwnedPointer<Oxs_ScalarField> temperature_init;
   Oxs_MeshValue<OC_REAL8m> temperature; // in Kelvin
   // Make sure kB_T gets updated when temperature is changed.

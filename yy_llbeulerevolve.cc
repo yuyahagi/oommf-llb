@@ -259,8 +259,6 @@ OC_BOOL YY_LLBEulerEvolve::Init()
 
   hFluct_t.Release(); hFluct_l.Release();
   hFluctVarConst_t.Release(); hFluctVarConst_l.Release();
-  inducedDriftConst_t.Release(); inducedDriftConst_l.Release();
-
 
   energy_state_id=0;   // Mark as invalid state
   next_timestep=0.;    // Dummy value
@@ -307,8 +305,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   OC_UINT4m iteration_now = state_.iteration_count;
   ThreeVector scratch;
   ThreeVector dm_fluct;
-  ThreeVector inducedDrift_t;
-  ThreeVector inducedDrift_l;
   OC_REAL8m hFluctSigma_t;
   OC_REAL8m hFluctSigma_l;
   dm_dt_t_.AdjustSize(mesh_);
@@ -336,8 +332,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
-    inducedDriftConst_t.AdjustSize(mesh_);
-    inducedDriftConst_l.AdjustSize(mesh_);
     FillHFluctConst(mesh_);
     InitHFluct(mesh_);
   }
@@ -416,26 +410,12 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       scratch *= -cell_alpha_t; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
       dm_dt_t_[i] += scratch;
 
-      if (!ito_calculus){     // no additional drifting in Ito case
-        // additional drift terms due to integration of a stochastic 
-        // function
-        // -gamma^2 * sigma^2 * (1 + alpha^2) * m
-        inducedDrift_t = (inducedDriftConst_t[i]*Ms_inverse_[i])*spin_[i];
-        dm_dt_t_[i] += inducedDrift_t;
-      }
-
       // Longitudinal terms
       OC_REAL8m temp;
       temp = spin_[i] * (total_field_[i] + hFluct_l[i]);  // dot product m.H
       temp *= cell_gamma*cell_alpha_l;
       scratch = temp*spin_[i];
       dm_dt_l_[i] += scratch;
-
-      if (!ito_calculus){     // no additional drifting in Ito case
-        inducedDrift_l = (inducedDriftConst_l[i]*Ms_inverse_[i])*spin_[i];
-        dm_dt_l_[i] += inducedDrift_l;
-        // TODO: Longitudinal induced drift term?
-      }
     }
   }
 
@@ -870,13 +850,6 @@ void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
     hFluctVarConst_l[i] = cell_alpha_l/(1+cell_alpha_l*cell_alpha_l);     // 2*alpha/(1+alpha^2)
     hFluctVarConst_l[i] *= 2.*kB_T[i]; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
     hFluctVarConst_l[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
-
-    // by means of stochastic calculus (that is different from ordinary calculus) an additional deterministic term arises
-    // when integrating stochastic equations in an Euler-Scheme (This term is called the noise induced drift term)
-    inducedDriftConst_t[i] = -hFluctVarConst_t[i]
-      *cell_gamma*cell_gamma*(1.+cell_alpha_t*cell_alpha_t);
-    inducedDriftConst_l[i] = -hFluctVarConst_l[i]
-      *cell_gamma*cell_gamma*(1.+cell_alpha_l*cell_alpha_l);
   }
 }
 
