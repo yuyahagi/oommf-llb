@@ -40,6 +40,8 @@ Specify YY_LLBEulerEvolve:evolver {
   do_precess 1
   gamma_LL 2.21e5
   alpha_t 0.1
+  J { Oxs_UniformScalarField  {value 4e-21} }
+  atom_moment { Oxs_UniformScalarField {value 2.04e-23} }
 	fixed_timestep 2e-13
 	temperature 60
 	uniform_seed 111

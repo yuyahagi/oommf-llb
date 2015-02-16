@@ -135,6 +135,19 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
                                    "value 400")));
   }
 
+  if(HasInitValue("J")) {
+    OXS_GET_INIT_EXT_OBJECT("J",Oxs_ScalarField,J_init);
+  } else {
+    throw Oxs_Ext::Error(this,"Exchange parameter J not specified.\n");
+  }
+
+  if(HasInitValue("atom_moment")) {
+    OXS_GET_INIT_EXT_OBJECT("atom_moment",Oxs_ScalarField,mu_init);
+  } else {
+    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment"
+        " is not specified.");
+  }
+
   // User may specify either gamma_G (Gilbert) or
   // gamma_LL (Landau-Lifshitz).  Code uses "gamma"
   // which is LL form.
@@ -304,7 +317,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
   iteration_now++;
   // if not done, hFluct for first step may be calculated too often
-
+  
   // Fill out alpha and gamma meshvalue arrays, as necessary.
   if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)
      || !alpha_t.CheckMesh(mesh_)) {
@@ -317,12 +330,19 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     }
     UpdateMeshArrays(mesh_);
     total_field.AdjustSize(mesh_);
+
+
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
     inducedDriftConst_t.AdjustSize(mesh_);
     inducedDriftConst_l.AdjustSize(mesh_);
     FillHFluctConst(mesh_);
     InitHFluct(mesh_);
+  }
+
+  {
+    i = 10;
+    Update_m_e_chi_l(J, temperature, mu);
   }
 
 
@@ -794,9 +814,15 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   const OC_INDEX size = mesh->Size();
   OC_INDEX i;
 
+  // TODO: This function should be InitMeshArrays or some of the following
+  // should be moved to an appropriate place
   alpha_t_init->FillMeshValue(mesh,alpha_t0);
   gamma_init->FillMeshValue(mesh,gamma);
   Tc_init->FillMeshValue(mesh,Tc);
+  J_init->FillMeshValue(mesh,J);
+  mu_init->FillMeshValue(mesh,mu);
+  m_e.AdjustSize(mesh);
+  chi_l.AdjustSize(mesh);
   alpha_t.AdjustSize(mesh);
   alpha_l.AdjustSize(mesh);
 
@@ -817,6 +843,8 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   if(!allow_signed_gamma) {
     for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
   }
+
+  Update_m_e_chi_l(J, temperature, mu, 1e-4);
 
   mesh_id = mesh->Id();
 }
@@ -861,27 +889,41 @@ void YY_LLBEulerEvolve::InitHFluct(const Oxs_Mesh* mesh)
   }
 }
 
-OC_REAL8m YY_LLBEulerEvolve::Calculate_m_e(OC_REAL8m J,
+void YY_LLBEulerEvolve::Update_m_e_chi_l(
+    const Oxs_MeshValue<OC_REAL8m>& J,
     OC_REAL8m T,
+    const Oxs_MeshValue<OC_REAL8m>& mu,
     OC_REAL8m tol_in = 1e-4) const
 {
   // Solve for the equilibrium spin polarization m_e using the Newton's
   // method. Returns 0 when A <= 0 or A >= 1/3.
-  const OC_REAL8m A = KBoltzmann*T/J;
-  if(A <= 0 || A >= 1./3.) {
-    return 0;
-  }
+  const OC_REAL8m size = J.Size();
 
-  const OC_REAL8m tol = fabs(tol_in);
-  OC_REAL8m x = 1.0/A;
-  OC_REAL8m y = Langevin(x)-A*x;
-  OC_REAL8m dy = LangevinDeriv(x)-A;
-  while(fabs(y)>tol) {
-    x -= y/dy;
-    y = Langevin(x)-A*x;
-    dy = LangevinDeriv(x)-A;
+  for(OC_INDEX i=0; i<size; i++) {
+    OC_REAL8m A = KBoltzmann*T/J[i];
+    if(A <= 0 || A >= 1./3.) {
+      m_e[i] = 0;
+      chi_l[i] = 0;
+    } else {
+      // Solve for equilibrium spin polarization m_e using Newton's method
+      const OC_REAL8m tol = fabs(tol_in);
+      OC_REAL8m x = 1.0/A;
+      OC_REAL8m y = Langevin(x)-A*x;
+      OC_REAL8m dy = LangevinDeriv(x)-A;
+      while(fabs(y)>tol) {
+        x -= y/dy;
+        y = Langevin(x)-A*x;
+        dy = LangevinDeriv(x)-A;
+      }
+      m_e[i] = A*x;
+
+      // Calculate longitudinal susceptibility chi_l
+      OC_REAL8m dL = LangevinDeriv(J[i]*m_e[i]/(KBoltzmann*T));
+      OC_REAL8m beta = 1/(KBoltzmann*T);
+
+      chi_l[i] = MU0*mu[i]*beta*dL/(1-beta*J[i]*dL);
+    }
   }
-  return A*x;
 }
 
 OC_REAL8m YY_LLBEulerEvolve::Langevin(OC_REAL8m x) const

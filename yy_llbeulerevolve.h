@@ -128,20 +128,29 @@ private:
   Oxs_OwnedPointer<Oxs_ScalarField> Tc_init;
   Oxs_MeshValue<OC_REAL8m> Tc;  // Currie temperature in Kelvin
 
-  // Exchange parameter for longitudinal susceptibility
-  Oxs_OwnedPointer<Oxs_ScalarField> J_init;
-  Oxs_MeshValue<OC_REAL8m> J;
+  // Exchange parameter J and atomistic magnetic moment mu
+  // Used for longitudinal susceptibility
+  Oxs_OwnedPointer<Oxs_ScalarField> J_init, mu_init;
+  Oxs_MeshValue<OC_REAL8m> J, mu;
 
   // Members for calculating m_e, equilibrium spin polarization at
-  // temperature T.
+  // temperature T and chi_l, longitudinal susceptibility.
+  mutable Oxs_MeshValue<OC_REAL8m> m_e, chi_l;
   void CalculateLongField(const Oxs_SimState& state,
       Oxs_MeshValue<ThreeVector>& longfield) const;
   // Derivative of Langevin function
   OC_REAL8m Langevin(OC_REAL8m x) const;
   OC_REAL8m LangevinDeriv(OC_REAL8m x) const;
-  OC_REAL8m Calculate_m_e(OC_REAL8m J, OC_REAL8m T, OC_REAL8m tol) const;
-  OC_REAL8m Calculate_m_e(OC_REAL8m J, OC_REAL8m T) const {
-    return Calculate_m_e(J, T, DEFAULT_M_E_TOL);
+  void Update_m_e_chi_l(
+      const Oxs_MeshValue<OC_REAL8m>& J, 
+      OC_REAL8m T, 
+      const Oxs_MeshValue<OC_REAL8m>& mu,
+      OC_REAL8m tol) const;
+  void Update_m_e_chi_l(
+      const Oxs_MeshValue<OC_REAL8m>& J, 
+      OC_REAL8m T,
+      const Oxs_MeshValue<OC_REAL8m>& mu) const {
+    return Update_m_e_chi_l(J, T, mu, DEFAULT_M_E_TOL);
   }
 
   // constant part of the additional drift term that arises in stochastic caculus
