@@ -411,7 +411,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
-      // Additional longitudinal field for LLB equation
+      // Longitudinal exchange field for LLB equation
       OC_REAL8m temp = spin_[i]*total_field[i];
       if(temperature[i] < Tc[i]) {
         temp += 0.5/chi_l[i]
@@ -425,6 +425,9 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       temp *= cell_gamma*cell_alpha_l;
       scratch_l = temp*spin_[i];
       dm_dt_l_[i] += scratch_l;
+
+      // Longitudinal stochastic field
+      dm_dt_l_[i] += hFluct_l[i];
     }
   }
 
@@ -852,17 +855,18 @@ void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
   // Update variables that will be constant factors in the simulation
   // h_fluctVarConst will store 2*kB*T*alpha/((1+alpha^2)*gamma*MU0*Vol*dt)
   const OC_INDEX size = mesh->Size();
-  OC_REAL8m cell_alpha_t, cell_alpha_l, cell_gamma;
+  OC_REAL8m cell_alpha_t, cell_alpha_l, cell_gamma, cell_vol;
   for(OC_INDEX i=0;i<size;i++) {
     cell_alpha_t = fabs(alpha_t[i]);
     cell_alpha_l = fabs(alpha_l[i]);
     cell_gamma = fabs(gamma[i]);
-    hFluctVarConst_t[i] = cell_alpha_t/(1+cell_alpha_t*cell_alpha_t);     // 2*alpha/(1+alpha^2)
-    hFluctVarConst_t[i] *= 2.*kB_T[i]; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
-    hFluctVarConst_t[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
-    hFluctVarConst_l[i] = cell_alpha_l/(1+cell_alpha_l*cell_alpha_l);     // 2*alpha/(1+alpha^2)
-    hFluctVarConst_l[i] *= 2.*kB_T[i]; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
-    hFluctVarConst_l[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
+    cell_vol = mesh->Volume(i);
+    hFluctVarConst_t[i] = (cell_alpha_t-cell_alpha_l)/(cell_alpha_t*cell_alpha_t);
+    hFluctVarConst_t[i] *= kB_T[i];
+    hFluctVarConst_t[i] /= cell_gamma*cell_vol;
+    hFluctVarConst_l[i] = cell_alpha_l*cell_gamma;
+    hFluctVarConst_l[i] *= kB_T[i];
+    hFluctVarConst_l[i] /= MU0*cell_vol;
   }
 }
 
