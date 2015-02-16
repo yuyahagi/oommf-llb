@@ -40,37 +40,36 @@ OXS_EXT_REGISTER(YY_LLBEulerEvolve);
 
 /* End includes */
 
-void YY_LLBEulerEvolve::SetTemperature(const Oxs_Mesh* mesh_, OC_REAL8m newtemp)
+void YY_LLBEulerEvolve::UpdateStageTemperature(const Oxs_SimState& state)
 {
-  temperature = fabs(newtemp);   // no temperatures allowed below 0K
-  kB_T = KBoltzmann * temperature;
-  FillHFluctConst(mesh_);
-}
+  if(!has_tempscript) return;
 
-OC_REAL8m YY_LLBEulerEvolve::GetStageTemp
-(OC_UINT4m stage) const
-{
-  if(!has_tempscript) return temperature;
-
-  int index;
+  const Oxs_Mesh* mesh = state.mesh;
+  const OC_REAL8m stage = state.stage_number;
+  const OC_REAL8m size = mesh->Size();
+  OC_INDEX index;
   if((index = tempscript_opts[0].position)>=0) { // stage
     tempscript_cmd.SetCommandArg(index,stage);
   }
+  if((index = tempscript_opts[1].position)>=0) { // stage_time
+    tempscript_cmd.SetCommandArg(index,state.stage_elapsed_time);
+  }
+  if((index = tempscript_opts[2].position)>=0) { // total_time
+    tempscript_cmd.SetCommandArg(index,state.stage_start_time+state.stage_elapsed_time);
+  }
 
+  vector<String> params;
   tempscript_cmd.SaveInterpResult();
   tempscript_cmd.Eval();
-  if(tempscript_cmd.GetResultListSize()!=1) {
-    String msg
-      = String("Return script value is not a single scalar: ")
-      + tempscript_cmd.GetWholeResult();
-    tempscript_cmd.RestoreInterpResult();
-    throw Oxs_ExtError(this,msg.c_str());
-  }
-  OC_REAL8m result;
-  tempscript_cmd.GetResultListItem(0,result);
+  tempscript_cmd.GetResultList(params);
   tempscript_cmd.RestoreInterpResult();
 
-  return result;
+  OXS_GET_EXT_OBJECT(params,Oxs_ScalarField,temperature_init);
+  temperature_init->FillMeshValue(mesh,temperature);
+  kB_T.AdjustSize(mesh);
+  for(OC_INDEX i=0; i<size; i++) {
+    kB_T[i] = KBoltzmann*temperature[i];
+  }
 }
 
 // Constructor
@@ -85,6 +84,7 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
     KBoltzmann(1.38062e-23),
     iteration_Tcalculated(0),
     has_tempscript(0),
+    last_stage_number(0),
     isMs0Set(0)
 {
   // Process arguments
@@ -174,10 +174,10 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
 
   // here the new parameters are set up
   // The new parameters for thermal are set up here
-  if(HasInitValue("temperature")) {
-    // Get temperature of simulation
-    temperature = GetRealInitValue("temperature", 0.);
-  }
+  //if(HasInitValue("temperature")) {
+  //  // Get temperature of simulation
+  //  temperature = GetRealInitValue("temperature", 0.);
+  //}
 
   // Get time dependent multiplier to scale temperature
   if(HasInitValue("tempscript")) {
@@ -197,7 +197,7 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
 
   // set temperature to zero to get an estimate for a reasonable stepsize
   // or use it for comparison (acts like eulerevolve with temperature=0K)
-  if(temperature == 0.){
+  if(!has_tempscript){ // That is, T = 0.
     min_timestep = 0.;    
     max_timestep = 1e-10; 
   }
@@ -328,9 +328,11 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
       isMs0Set = 1;
     }
+    UpdateStageTemperature(state_);
+
+    // Update temperature-dependent coefficients
     UpdateMeshArrays(mesh_);
     total_field.AdjustSize(mesh_);
-
 
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
@@ -339,15 +341,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     FillHFluctConst(mesh_);
     InitHFluct(mesh_);
   }
-
-  {
-    i = 10;
-    Update_m_e_chi_l(J, temperature, mu);
-  }
-
-
-  // TODO: Update temperature and the meshvalues accordingly.
-
 
   // if mesh has changed or hFluct_t doesn't exist yet, create a compatible 
   // array. In this case hFluct_t[i] MUST!! be computed, so force it
@@ -482,7 +475,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   /// is always non-negative, so dE_dt_ can only be made positive
   /// by positive pE_pt_.
 
-  if(temperature == 0.) {
+  if(!has_tempscript) { // temperature == 0 at all cells
     // Get bound on smallest stepsize that would actually
     // change spin new_max_dm_dt_index:
     OC_REAL8m min_ratio = DBL_MAX/2.;
@@ -596,12 +589,17 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     workstate.last_timestep=timestep_lower_bound;
   }
 
-  if(cstate.stage_number != workstate.stage_number) {
+  if(cstate.stage_number != last_stage_number) {
     // New stage
+    last_stage_number = cstate.stage_number;
     workstate.stage_start_time = cstate.stage_start_time
                                 + cstate.stage_elapsed_time;
     workstate.stage_elapsed_time = workstate.last_timestep;
-    SetTemperature(cstate.mesh,GetStageTemp(workstate.stage_number));
+
+    UpdateStageTemperature(workstate);
+    UpdateMeshArrays(workstate.mesh);
+    FillHFluctConst(workstate.mesh);
+    // TODO: Separate initialization from UpdateMeshArray().
   } else {
     workstate.stage_start_time = cstate.stage_start_time;
     workstate.stage_elapsed_time = cstate.stage_elapsed_time
@@ -818,6 +816,8 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   // should be moved to an appropriate place
   alpha_t_init->FillMeshValue(mesh,alpha_t0);
   gamma_init->FillMeshValue(mesh,gamma);
+  temperature_init->FillMeshValue(mesh,temperature);
+  kB_T.AdjustSize(mesh);
   Tc_init->FillMeshValue(mesh,Tc);
   J_init->FillMeshValue(mesh,J);
   mu_init->FillMeshValue(mesh,mu);
@@ -831,6 +831,8 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
     alpha_l[i] = 0.0;
     //alpha_t[i] = alpha_t0[i]*(1-temperature/(3*Tc[i]));
     //alpha_l[i] = alpha_t0[i]*2*temperature/(3*Tc[i]);
+    
+    kB_T[i] = KBoltzmann*temperature[i];
   }
 
   if(gamma_style == GS_G) { // Convert to LL form
@@ -844,7 +846,7 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
     for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
   }
 
-  Update_m_e_chi_l(J, temperature, mu, 1e-4);
+  Update_m_e_chi_l(/*tol=*/1e-4);
 
   mesh_id = mesh->Id();
 }
@@ -863,10 +865,10 @@ void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
     cell_alpha_l = fabs(alpha_l[i]);
     cell_gamma = fabs(gamma[i]);
     hFluctVarConst_t[i] = cell_alpha_t/(1+cell_alpha_t*cell_alpha_t);     // 2*alpha/(1+alpha^2)
-    hFluctVarConst_t[i] *= 2.*KBoltzmann*temperature; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
+    hFluctVarConst_t[i] *= 2.*kB_T[i]; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
     hFluctVarConst_t[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
     hFluctVarConst_l[i] = cell_alpha_l/(1+cell_alpha_l*cell_alpha_l);     // 2*alpha/(1+alpha^2)
-    hFluctVarConst_l[i] *= 2.*KBoltzmann*temperature; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
+    hFluctVarConst_l[i] *= 2.*kB_T[i]; // 2*kB*T*alpha/((1+alpha^2)*MU0*gamma*Volume*dt)
     hFluctVarConst_l[i] /= (MU0*cell_gamma*(mesh->Volume(i)));      // 2*alpha/((1+alpha^2)*MU0*gamma*dt)
 
     // by means of stochastic calculus (that is different from ordinary calculus) an additional deterministic term arises
@@ -889,18 +891,14 @@ void YY_LLBEulerEvolve::InitHFluct(const Oxs_Mesh* mesh)
   }
 }
 
-void YY_LLBEulerEvolve::Update_m_e_chi_l(
-    const Oxs_MeshValue<OC_REAL8m>& J,
-    OC_REAL8m T,
-    const Oxs_MeshValue<OC_REAL8m>& mu,
-    OC_REAL8m tol_in = 1e-4) const
+void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
 {
   // Solve for the equilibrium spin polarization m_e using the Newton's
   // method. Returns 0 when A <= 0 or A >= 1/3.
   const OC_REAL8m size = J.Size();
 
   for(OC_INDEX i=0; i<size; i++) {
-    OC_REAL8m A = KBoltzmann*T/J[i];
+    OC_REAL8m A = kB_T[i]/J[i];
     if(A <= 0 || A >= 1./3.) {
       m_e[i] = 0;
       chi_l[i] = 0;
@@ -918,8 +916,8 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(
       m_e[i] = A*x;
 
       // Calculate longitudinal susceptibility chi_l
-      OC_REAL8m dL = LangevinDeriv(J[i]*m_e[i]/(KBoltzmann*T));
-      OC_REAL8m beta = 1/(KBoltzmann*T);
+      OC_REAL8m dL = LangevinDeriv(J[i]*m_e[i]/(kB_T[i]));
+      OC_REAL8m beta = 1/(kB_T[i]);
 
       chi_l[i] = MU0*mu[i]*beta*dL/(1-beta*J[i]*dL);
     }

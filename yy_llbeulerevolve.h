@@ -115,7 +115,7 @@ private:
   Variables and constants for the temperature dependant part of this evolver
   **/
   const OC_REAL8m KBoltzmann;            // Boltzmann constant
-  OC_REAL8m kB_T;                        // thermal energy
+  Oxs_MeshValue<OC_REAL8m> kB_T;                        // thermal energy
   Oxs_MeshValue<OC_REAL8m> hFluctVarConst_t;  // constant part of the variance of the thermal field
   Oxs_MeshValue<OC_REAL8m> hFluctVarConst_l;
   Oxs_MeshValue<ThreeVector> hFluct_t; // current values of the thermal field
@@ -141,22 +141,17 @@ private:
   // Derivative of Langevin function
   OC_REAL8m Langevin(OC_REAL8m x) const;
   OC_REAL8m LangevinDeriv(OC_REAL8m x) const;
-  void Update_m_e_chi_l(
-      const Oxs_MeshValue<OC_REAL8m>& J, 
-      OC_REAL8m T, 
-      const Oxs_MeshValue<OC_REAL8m>& mu,
-      OC_REAL8m tol) const;
-  void Update_m_e_chi_l(
-      const Oxs_MeshValue<OC_REAL8m>& J, 
-      OC_REAL8m T,
-      const Oxs_MeshValue<OC_REAL8m>& mu) const {
-    return Update_m_e_chi_l(J, T, mu, DEFAULT_M_E_TOL);
+  void Update_m_e_chi_l(OC_REAL8m tol) const;
+  void Update_m_e_chi_l() const {
+    return Update_m_e_chi_l(DEFAULT_M_E_TOL);
   }
 
   // constant part of the additional drift term that arises in stochastic caculus
   Oxs_MeshValue<OC_REAL8m> inducedDriftConst_t;
   Oxs_MeshValue<OC_REAL8m> inducedDriftConst_l;
-  OC_REAL8m temperature;            // in Kelvin
+  Oxs_OwnedPointer<Oxs_ScalarField> temperature_init;
+  Oxs_MeshValue<OC_REAL8m> temperature; // in Kelvin
+  // Make sure kB_T gets updated when temperature is changed.
   OC_UINT4m iteration_Tcalculated;  // keep in mind for which iteration the thermal field is already calculated
   OC_BOOL   ito_calculus;
   // use alternative interpretation of the stochastic Langevin equation
@@ -165,11 +160,13 @@ private:
   /**
   Support for stage-varying temperature
   **/
-  void SetTemperature(const Oxs_Mesh* mesh_, OC_REAL8m newtemp);
+  void UpdateStageTemperature(const Oxs_SimState& stage);
   OC_BOOL has_tempscript;
   vector<Nb_TclCommandLineOption> tempscript_opts;
   Nb_TclCommand tempscript_cmd;
-  OC_REAL8m GetStageTemp(OC_UINT4m stage) const;
+
+  // Stores last stage number for stage-dependent tempscript
+  OC_INDEX last_stage_number;
 
   /**
   Variables for the Random distributions

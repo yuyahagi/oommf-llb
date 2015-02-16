@@ -35,6 +35,21 @@ Specify Oxs_UZeeman {
   Hrange { { 15000 0 0 15000 0 0 1 } }
 }
 
+proc TempScript { stage } {
+  set spec Oxs_UniformScalarField
+  set spec Oxs_ScriptScalarField
+  lappend spec [subst {
+      atlas :atlas
+      script {SlidingField 1.0}
+   }]
+   return $spec
+}
+
+proc SlidingField { xcutoff xrel yrel zrel } {
+   if {$xrel>$xcutoff} { return 0.0 }
+   return 60
+}
+
 # Specify at least the temperature and timestep you want to use
 Specify YY_LLBEulerEvolve:evolver {
   do_precess 1
@@ -43,7 +58,8 @@ Specify YY_LLBEulerEvolve:evolver {
   J { Oxs_UniformScalarField  {value 4e-21} }
   atom_moment { Oxs_UniformScalarField {value 2.04e-23} }
 	fixed_timestep 2e-13
-	temperature 60
+	tempscript TempScript
+  tempscript_args { stage }
 	uniform_seed 111
   ito_calculus 0
 }
