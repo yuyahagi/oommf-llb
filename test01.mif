@@ -20,13 +20,13 @@ Schedule Oxs_TimeDriver::Magnetization mmDisp1 Step 10
 
 
 Specify Oxs_BoxAtlas:atlas {
-  xrange {0 1E-7}
-  yrange {0 1E-7}
-  zrange {0 1e-9}
+  xrange {0 1e-7}
+  yrange {0 1e-7}
+  zrange {0 5e-9}
 }
 
 Specify Oxs_RectangularMesh:mesh {
-  cellsize {1e-9 1e-9 1e-9}
+  cellsize {4e-9 4e-9 5e-9}
   atlas :atlas
 }
 
@@ -34,6 +34,12 @@ Specify Oxs_UZeeman {
   multiplier 79.6
   Hrange { { 1.5000 0 0 1.5000 0 0 37 } }
 }
+
+Specify Oxs_UniformExchange {
+  A 1e-11
+}
+
+#Specify Oxs_Demag {}
 
 proc TempScript { stage } {
   set T [expr 0+10*$stage]
@@ -63,14 +69,14 @@ Specify YY_LLBEulerEvolve:evolver {
 }
 
 Specify Oxs_TimeDriver {
- basename test01
- vector_field_output_format {binary 4}
- scalar_output_format %.15g
- evolver :evolver
- mesh :mesh
- stopping_time { 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 }
- stage_count 0
- Ms { Oxs_UniformScalarField  {value 500e3} }
- m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
+  basename test01
+  vector_field_output_format {binary 4}
+  scalar_output_format %.15g
+  evolver :evolver
+  mesh :mesh
+  stopping_time { 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 }
+  stage_count 0
+  Ms { Oxs_UniformScalarField  {value 500e3} }
+  m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
 }
 
