@@ -395,6 +395,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
       if(do_precess) {
         dm_dt_t_[i]  = scratch_t;
+        dm_dt_t_[i]  *= Ms_[i]*Ms0_inverse[i];
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       } else {
         dm_dt_t_[i].Set(0.0,0.0,0.0);
@@ -402,8 +403,8 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
 
       // Note: The stochastic field is NOT included in the first term of 
-      // the LLB equation. See PRB 85, 014433 (2012). Also, another form
-      // of LLB equation has been proposed in the article.
+      // the LLB equation. See PRB 85, 014433 (2012). The second form of 
+      // LLB is the above article is implemented here.
       dm_fluct_t = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
       dm_fluct_t *= -cell_gamma;
       scratch_t += dm_fluct_t;  // -|gamma|*mx(H+hFluct_t)
@@ -415,24 +416,27 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
-      // Longitudinal exchange field for LLB equation
       OC_REAL8m temp = spin_[i]*total_field[i];
       if(temperature[i] != 0) {
+        OC_REAL8m cell_m = Ms_[i]*Ms0_inverse[i];
+        OC_REAL8m cell_msq = cell_m*cell_m;
         if(temperature[i] < Tc[i]) {
           temp += 0.5/chi_l[i]
-            *(1-Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]*m_e[i]*m_e[i]))
-            *Ms_[i]*Ms0_inverse[i];
+            *(1-cell_msq/(m_e[i]*m_e[i]))*cell_m;
         } else {
           temp += -1.0/chi_l[i]
-            *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]))
-            *Ms_[i]*Ms0_inverse[i];
+            *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*cell_msq)*cell_m;
         }
-        temp *= cell_gamma*cell_alpha_l;
+        temp *= cell_gamma*cell_alpha_l*Ms0[i]*Ms_inverse_[i];
         scratch_l = temp*spin_[i];
+        if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
+          // scratch_l || spin_[i]
+          scratch_l.MakeUnit();
+        }
         dm_dt_l_[i] += scratch_l;
 
-        // Longitudinal stochastic field
-        dm_dt_l_[i] += hFluct_l[i];
+        // Longitudinal stochastic field parallel to spin
+        dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0[i]*Ms_inverse_[i];
       }
     }
   }
@@ -648,6 +652,12 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     OC_REAL8m Ms_temp = wMs[i];
     OC_REAL8m Ms_inverse_temp = wMs_inverse[i];
     wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
+    if(wMs[i] <= 0.0) {
+      // If spin overshoots to the opposite direction with stochastic kick,
+      // keep Ms positive and flip spin direction.
+      wMs[i] *= -1;
+      workstate.spin[i] *= -1;
+    }
     if(wMs[i] != 0.0) {
       wMs_inverse[i] = 1.0/wMs[i];
     } else {
@@ -659,7 +669,6 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
 
   //  Calculate delta E
   OC_REAL8m new_pE_pt;
-  // TODO: Add additional Heff terms in Eq (3) in PRB 85, 014433 (2012).
   GetEnergyDensity(nstate,new_energy,
        &mxH_output.cache.value,
        &total_field,
@@ -870,7 +879,7 @@ void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
     cell_alpha_l = fabs(alpha_l[i]);
     cell_gamma = fabs(gamma[i]);
     cell_vol = mesh->Volume(i);
-    hFluctVarConst_t[i] = (cell_alpha_t-cell_alpha_l)/(cell_alpha_t*cell_alpha_t);
+    hFluctVarConst_t[i] = fabs(cell_alpha_t-cell_alpha_l)/(cell_alpha_t*cell_alpha_t);
     hFluctVarConst_t[i] *= kB_T[i];
     hFluctVarConst_t[i] /= cell_gamma*cell_vol;
     hFluctVarConst_l[i] = cell_alpha_l*cell_gamma;
@@ -901,7 +910,7 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
     Tc[i] = J[i]/(3*KBoltzmann);
     if(A <= 0 || A >= 1./3.) {
       m_e[i] = 0;
-      chi_l[i] = 0;
+      chi_l[i] = MU0*mu[i]/J[i];
     } else {
       // Solve for equilibrium spin polarization m_e using Newton's method
       const OC_REAL8m tol = fabs(tol_in);
