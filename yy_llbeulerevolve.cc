@@ -148,6 +148,9 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
         " is not specified.");
   }
 
+  // Flag to include stochastic field
+  use_stochastic = GetRealInitValue("use_stochastic",0);
+
   // User may specify either gamma_G (Gilbert) or
   // gamma_LL (Landau-Lifshitz).  Code uses "gamma"
   // which is LL form.
@@ -354,7 +357,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   // TODO: Calculation of coefficients are done here and at
   // FillHFluctConst(). Depending on when the temperature and Ms are
   // updated, try to put everything in one place. See line ~870.
-  if (iteration_now > iteration_Tcalculated) {
+  if (use_stochastic && iteration_now > iteration_Tcalculated) {
     // i.e. if thermal field is not calculated for this step
     for(i=0;i<size;i++){
       if(Ms_[i] != 0){
@@ -402,14 +405,15 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       }
 
-      // Note: The stochastic field is NOT included in the first term of 
-      // the LLB equation. See PRB 85, 014433 (2012). The second form of 
-      // LLB is the above article is implemented here.
-      dm_fluct_t = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
-      dm_fluct_t *= -cell_gamma;
-      scratch_t += dm_fluct_t;  // -|gamma|*mx(H+hFluct_t)
-
       // Transverse damping term
+      if(use_stochastic) {
+        // Note: The stochastic field is NOT included in the first term of 
+        // the LLB equation. See PRB 85, 014433 (2012). The second form of 
+        // LLB is the above article is implemented here.
+        dm_fluct_t = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
+        dm_fluct_t *= -cell_gamma;
+        scratch_t += dm_fluct_t;  // -|gamma|*mx(H+hFluct_t)
+      }
       scratch_t ^= spin_[i];
       // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
       scratch_t *= -cell_alpha_t*Ms0[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
@@ -435,8 +439,10 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
         }
         dm_dt_l_[i] += scratch_l;
 
-        // Longitudinal stochastic field parallel to spin
-        dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0[i]*Ms_inverse_[i];
+        if(use_stochastic) {
+          // Longitudinal stochastic field parallel to spin
+          dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0[i]*Ms_inverse_[i];
+        }
       }
     }
   }

@@ -168,6 +168,8 @@ private:
   /**
   Variables for the Random distributions
   **/
+  // Flag to include stochastic field
+  OC_BOOL use_stochastic;
   // seed to initialize the generator with, can be any integer
   // (beware: -|n| is used in this method)
   OC_INT4m uniform_seed;  

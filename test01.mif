@@ -6,16 +6,16 @@
 # Mx decays exponentially with characteristic time thau = 5.835e-11 s
 # and <Mx> = Ms*exp(-t/thau)
 
-#Destination Archiv mmArchive
+Destination Archiv mmArchive
 Destination mmDataTable mmDataTable
 Destination mmGraph mmGraph
 Destination mmDisp1 mmDisp
 Destination mmDisp2 mmDisp
 
-#Schedule DataTable Archiv Step 100
-Schedule DataTable mmDataTable Step 1
-Schedule DataTable mmGraph Step 1
-Schedule Oxs_TimeDriver::Magnetization mmDisp1 Step 1
+#Schedule DataTable Archiv Stage 1
+Schedule DataTable mmDataTable Step 10
+Schedule DataTable mmGraph Step 10
+Schedule Oxs_TimeDriver::Magnetization mmDisp1 Step 10
 #Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
 
 
@@ -32,15 +32,14 @@ Specify Oxs_RectangularMesh:mesh {
 
 Specify Oxs_UZeeman {
   multiplier 79.6
-  Hrange { { 15000 0 0 15000 0 0 1 } }
+  Hrange { { 1.5000 0 0 1.5000 0 0 37 } }
 }
 
 proc TempScript { stage } {
+  set T [expr 0+10*$stage]
   set spec Oxs_UniformScalarField
-  set spec Oxs_ScriptScalarField
   lappend spec [subst {
-      atlas :atlas
-      script {SlidingField 1.0}
+      value $T
    }]
    return $spec
 }
@@ -57,11 +56,11 @@ Specify YY_LLBEulerEvolve:evolver {
   alpha_t 0.1
   J { Oxs_UniformScalarField  {value 1.47e-20} }
   atom_moment { Oxs_UniformScalarField {value 3e-23} }
-	fixed_timestep 2e-13
+	fixed_timestep 5e-14
 	tempscript TempScript
   tempscript_args { stage }
 	uniform_seed 111
-  ito_calculus 0
+  use_stochastic 1
 }
 #gamma_LL 2.21e5
 
@@ -72,7 +71,7 @@ Specify Oxs_TimeDriver {
  scalar_output_format %.15g
  evolver :evolver
  mesh :mesh
- stopping_time 5e-10
+ stopping_time { 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 1e-11 }
  stage_count 0
  Ms { Oxs_UniformScalarField  {value 500e3} }
  m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
