@@ -47,7 +47,7 @@ proc TempScript { stage } {
 
 proc SlidingField { xcutoff xrel yrel zrel } {
    if {$xrel>$xcutoff} { return 0.0 }
-   return 60
+   return 290
 }
 
 # Specify at least the temperature and timestep you want to use
@@ -55,8 +55,8 @@ Specify YY_LLBEulerEvolve:evolver {
   do_precess 1
   gamma_LL 2.21e5
   alpha_t 0.1
-  J { Oxs_UniformScalarField  {value 4e-21} }
-  atom_moment { Oxs_UniformScalarField {value 2.04e-23} }
+  J { Oxs_UniformScalarField  {value 1.47e-20} }
+  atom_moment { Oxs_UniformScalarField {value 3e-23} }
 	fixed_timestep 2e-13
 	tempscript TempScript
   tempscript_args { stage }
@@ -74,7 +74,7 @@ Specify Oxs_TimeDriver {
  mesh :mesh
  stopping_time 5e-10
  stage_count 0
- Ms { Oxs_UniformScalarField  {value 1700E3} }
+ Ms { Oxs_UniformScalarField  {value 500e3} }
  m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
 }
 
