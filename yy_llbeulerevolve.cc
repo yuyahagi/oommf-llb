@@ -127,13 +127,8 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
                                    "value 0.5")));
   }
 
-  //if(HasInitValue("Tc")) {
-  //  OXS_GET_INIT_EXT_OBJECT("Tc",Oxs_ScalarField,Tc_init);
-  //} else {
-  //  Tc_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
-  //                        (MakeNew("Oxs_UniformScalarField",director,
-  //                                 "value 400")));
-  //}
+  // Flag to include stochastic field
+  use_stochastic = GetRealInitValue("use_stochastic",0);
 
   if(HasInitValue("J")) {
     OXS_GET_INIT_EXT_OBJECT("J",Oxs_ScalarField,J_init);
@@ -147,9 +142,6 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
     throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment"
         " is not specified.");
   }
-
-  // Flag to include stochastic field
-  use_stochastic = GetRealInitValue("use_stochastic",0);
 
   // User may specify either gamma_G (Gilbert) or
   // gamma_LL (Landau-Lifshitz).  Code uses "gamma"
@@ -174,13 +166,6 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
 
   start_dm = GetRealInitValue("start_dm",0.01);
   start_dm *= PI/180.; // Convert from deg to rad
-
-  // here the new parameters are set up
-  // The new parameters for thermal are set up here
-  //if(HasInitValue("temperature")) {
-  //  // Get temperature of simulation
-  //  temperature = GetRealInitValue("temperature", 0.);
-  //}
 
   // Get time dependent multiplier to scale temperature
   if(HasInitValue("tempscript")) {
@@ -215,9 +200,6 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
   } else {
     has_uniform_seed = 0;
   }
-
-  // in Ito calculus no drift term appears, default=false
-  ito_calculus = GetIntInitValue("ito_calculus",0);
 
   gaus2_isset = 0;    //no gaussian random numbers calculated yet
 
@@ -323,9 +305,8 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   iteration_now++;
   // if not done, hFluct for first step may be calculated too often
   
-  // Fill out alpha and gamma meshvalue arrays, as necessary.
-  if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)
-     || !alpha_t.CheckMesh(mesh_)) {
+  if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)) {
+    // First go. Fill out meshvalue arrays as necessary.
     Ms0.AdjustSize(mesh_);
     Ms0_inverse.AdjustSize(mesh_);
     if(!isMs0Set) {
@@ -335,44 +316,46 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
       isMs0Set = 1;
     }
-    UpdateStageTemperature(state_);
 
-    // Update temperature-dependent coefficients
-    UpdateMeshArrays(mesh_);
-    total_field.AdjustSize(mesh_);
+    // Initialize non-temperature-dependent mesh values
+    J_init->FillMeshValue(mesh_,J);
+    mu_init->FillMeshValue(mesh_,mu);
+    alpha_t_init->FillMeshValue(mesh_,alpha_t0);
+    gamma_init->FillMeshValue(mesh_,gamma);
+
+    // Prepare temperature-dependent mesh value arrays
+    Tc.AdjustSize(mesh_);
+    m_e.AdjustSize(mesh_);
+    chi_l.AdjustSize(mesh_);
+    alpha_t.AdjustSize(mesh_);
+    alpha_l.AdjustSize(mesh_);
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
-    FillHFluctConst(mesh_);
-    InitHFluct(mesh_);
-  }
 
-  // if mesh has changed or hFluct_t doesn't exist yet, create a compatible 
-  // array. In this case hFluct_t[i] MUST!! be computed, so force it
-  if (!hFluct_t.CheckMesh(mesh_)) {
+    // Other mesh value arrays
+    total_field.AdjustSize(mesh_);
     hFluct_t.AdjustSize(mesh_);     
     hFluct_l.AdjustSize(mesh_);     
     iteration_Tcalculated = 0;     
-    }
 
-  // TODO: Calculation of coefficients are done here and at
-  // FillHFluctConst(). Depending on when the temperature and Ms are
-  // updated, try to put everything in one place. See line ~870.
+    // Update stage-dependent temperature and temperature-dependent parameters
+    UpdateStageTemperature(state_);
+    UpdateMeshArrays(mesh_);
+  }
+
   if (use_stochastic && iteration_now > iteration_Tcalculated) {
     // i.e. if thermal field is not calculated for this step
     for(i=0;i<size;i++){
       if(Ms_[i] != 0){
-        // only sqrt(delta_t) is multiplied for stochastic functions
-        // opposed to dm_dt * delta_t for deterministic functions
-        // sqrt(alpha/(1+alpha^2) * 2*kB_t/(Ms*V*delta_t)) ->
-        // this is the standard deviation of the gaussian distribution
+        // Only sqrt(delta_t) is multiplied for stochastic functions
+        // opposed to dm_dt * delta_t for deterministic functions.
+        // This is the standard deviation of the gaussian distribution
         // used to represent the thermal perturbations
         hFluctSigma_t = hFluctVarConst_t[i] * Ms_inverse_[i];
         hFluctSigma_t = sqrt(hFluctSigma_t / fixed_timestep);
         hFluctSigma_l = hFluctVarConst_l[i] * Ms_inverse_[i];
         hFluctSigma_l = sqrt(hFluctSigma_l / fixed_timestep);
 
-        // create the stochastic (fluctuating) field  
-        // that represents the thermal influence
         hFluct_t[i].x = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
         hFluct_t[i].y = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
         hFluct_t[i].z = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
@@ -462,7 +445,9 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   OC_REAL8m dE_dt_sum=0.0;
   OC_INDEX max_index=0;
   for(i=0;i<size;i++) {
-    OC_REAL8m dm_dt_sq = dm_dt_t_[i].MagSq() + dm_dt_l_[i].MagSq();
+    ThreeVector tempvec = dm_dt_t_[i];
+    tempvec += dm_dt_l_[i];
+    OC_REAL8m dm_dt_sq = tempvec.MagSq();
     if(dm_dt_sq>0.0) {
       dE_dt_sum += -1*MU0*fabs(gamma[i]*alpha_t[i])
         *mxH_[i].MagSq() * Ms_[i] * mesh_->Volume(i);
@@ -505,7 +490,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
   return;
 } // end Calculate_dm_dt
-
 
 OC_BOOL
 YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
@@ -604,10 +588,9 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
                                 + cstate.stage_elapsed_time;
     workstate.stage_elapsed_time = workstate.last_timestep;
 
+    // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(workstate);
     UpdateMeshArrays(workstate.mesh);
-    FillHFluctConst(workstate.mesh);
-    // TODO: Separate initialization from UpdateMeshArray().
   } else {
     workstate.stage_start_time = cstate.stage_start_time;
     workstate.stage_elapsed_time = cstate.stage_elapsed_time
@@ -653,10 +636,10 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     tempspin = dm_dt_l[i]*stepsize;
     tempspin += cstate.spin[i];
 
-    // TODO: Update Ms in the next state.
+    // Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
+    // Notes: This changes cMs too. Watch out.
     OC_REAL8m Ms_temp = wMs[i];
-    OC_REAL8m Ms_inverse_temp = wMs_inverse[i];
     wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
     if(wMs[i] <= 0.0) {
       // If spin overshoots to the opposite direction with stochastic kick,
@@ -831,78 +814,48 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   const OC_INDEX size = mesh->Size();
   OC_INDEX i;
 
-  // TODO: This function should be InitMeshArrays or some of the following
-  // should be moved to an appropriate place
-
-  // Update temperature and Tc first
-  temperature_init->FillMeshValue(mesh,temperature);
-  kB_T.AdjustSize(mesh);
-  //Tc_init->FillMeshValue(mesh,Tc);
-  Tc.AdjustSize(mesh);
-  J_init->FillMeshValue(mesh,J);
-  mu_init->FillMeshValue(mesh,mu);
-  m_e.AdjustSize(mesh);
-  chi_l.AdjustSize(mesh);
+  // Update Tc first
   Update_m_e_chi_l(/*tol=*/1e-4);
-
-  alpha_t_init->FillMeshValue(mesh,alpha_t0);
-  gamma_init->FillMeshValue(mesh,gamma);
-  alpha_t.AdjustSize(mesh);
-  alpha_l.AdjustSize(mesh);
-
-  for(i=0;i<size;i++) {
-    alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
-    alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
-    
-    kB_T[i] = KBoltzmann*temperature[i];
-  }
-
-  if(gamma_style == GS_G) { // Convert to LL form
-    for(i=0;i<size;++i) {
-      OC_REAL8m cell_alpha_t = alpha_t[i];
-      gamma[i] /= (1+cell_alpha_t*cell_alpha_t);
-    }
-  }
 
   if(!allow_signed_gamma) {
     for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
   }
 
-  mesh_id = mesh->Id();
-}
+  for(i=0;i<size;i++) {
+    alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
+    if(temperature[i] > Tc[i]) {
+      alpha_l[i] = alpha_t[i];
+    } else {
+      alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
+    }
+  }
 
-// TODO: Calculation of coefficients are done here and around line 390.
-// Depending on when the temperature and Ms are updated, try to put 
-// everything in one place.
-void YY_LLBEulerEvolve::FillHFluctConst(const Oxs_Mesh* mesh)
-{
-  // Update variables that will be constant factors in the simulation
-  // h_fluctVarConst will store 2*kB*T*alpha/((1+alpha^2)*gamma*MU0*Vol*dt)
-  const OC_INDEX size = mesh->Size();
-  OC_REAL8m cell_alpha_t, cell_alpha_l, cell_gamma, cell_vol;
+  if(gamma_style == GS_G) { // Convert to LL form
+    for(i=0;i<size;++i) {
+      // TODO: this should be alpha_t0[i] and run only once.
+      OC_REAL8m cell_alpha_t = alpha_t[i];
+      gamma[i] /= (1+cell_alpha_t*cell_alpha_t);
+    }
+  }
+
+  // Update variance of stochastic field
+  // h_fluctVarConst_t = (alpha_t-alpha_l)*kB*T/((1+alpha_t^2)*gamma*Vol)
+  // h_fluctVarConst_l = (alpha_l-gamma)*kB*T/(MU0*Vol)
   for(OC_INDEX i=0;i<size;i++) {
-    cell_alpha_t = fabs(alpha_t[i]);
-    cell_alpha_l = fabs(alpha_l[i]);
-    cell_gamma = fabs(gamma[i]);
-    cell_vol = mesh->Volume(i);
+    OC_REAL8m cell_alpha_t = fabs(alpha_t[i]);
+    OC_REAL8m cell_alpha_l = fabs(alpha_l[i]);
+    OC_REAL8m cell_gamma = fabs(gamma[i]);
+    OC_REAL8m cell_vol = mesh->Volume(i);
     hFluctVarConst_t[i] = fabs(cell_alpha_t-cell_alpha_l)/(cell_alpha_t*cell_alpha_t);
     hFluctVarConst_t[i] *= kB_T[i];
     hFluctVarConst_t[i] /= cell_gamma*cell_vol;
     hFluctVarConst_l[i] = cell_alpha_l*cell_gamma;
     hFluctVarConst_l[i] *= kB_T[i];
     hFluctVarConst_l[i] /= MU0*cell_vol;
+    // TODO: Verify use of MU0
   }
-}
 
-void YY_LLBEulerEvolve::InitHFluct(const Oxs_Mesh* mesh)
-{
-  const OC_INDEX size = mesh->Size();
-  hFluct_t.AdjustSize(mesh);
-  hFluct_l.AdjustSize(mesh);
-  for(OC_INDEX i=0;i<size;i++) {
-    hFluct_t[i].Set(0., 0., 0.);
-    hFluct_l[i].Set(0., 0., 0.);
-  }
+  mesh_id = mesh->Id();
 }
 
 void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
@@ -911,9 +864,13 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
   // method. Returns 0 when A <= 0 or A >= 1/3.
   const OC_REAL8m size = J.Size();
 
+  // TODO: Run this only once at the beginning of simulation
+  for(OC_INDEX i=0; i<size; i++) {
+    Tc[i] = J[i]/(3*KBoltzmann);
+  }
+
   for(OC_INDEX i=0; i<size; i++) {
     OC_REAL8m A = kB_T[i]/J[i];
-    Tc[i] = J[i]/(3*KBoltzmann);
     if(A <= 0 || A >= 1./3.) {
       m_e[i] = 0;
       chi_l[i] = MU0*mu[i]/J[i];
@@ -1042,7 +999,6 @@ void YY_LLBEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
     = delta_E_output.cache.state_id
     = state.Id();
 }   // end UpdateDerivedOutputs
-
 
 OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus,
     const OC_REAL8m sigmaGaus)
