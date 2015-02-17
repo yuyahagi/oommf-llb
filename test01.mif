@@ -49,7 +49,6 @@ proc SlidingField { xcutoff xrel yrel zrel } {
    return 290
 }
 
-# Specify at least the temperature and timestep you want to use
 Specify YY_LLBEulerEvolve:evolver {
   do_precess 1
   gamma_LL 2.21e5
@@ -62,9 +61,7 @@ Specify YY_LLBEulerEvolve:evolver {
 	uniform_seed 111
   use_stochastic 1
 }
-#gamma_LL 2.21e5
 
-#Specify YY_LLBTimeDriver {
 Specify Oxs_TimeDriver {
  basename test01
  vector_field_output_format {binary 4}

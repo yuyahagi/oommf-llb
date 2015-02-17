@@ -363,10 +363,8 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
         // opposed to dm_dt * delta_t for deterministic functions.
         // This is the standard deviation of the gaussian distribution
         // used to represent the thermal perturbations
-        hFluctSigma_t = hFluctVarConst_t[i] * Ms_inverse_[i];
-        hFluctSigma_t = sqrt(hFluctSigma_t / fixed_timestep);
-        hFluctSigma_l = hFluctVarConst_l[i] * Ms_inverse_[i];
-        hFluctSigma_l = sqrt(hFluctSigma_l / fixed_timestep);
+        hFluctSigma_t = sqrt(hFluctVarConst_t[i] / fixed_timestep);
+        hFluctSigma_l = sqrt(hFluctVarConst_l[i] / fixed_timestep);
 
         hFluct_t[i].x = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
         hFluct_t[i].y = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
@@ -838,17 +836,18 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
     }
 
     // Update variance of stochastic field
-    // h_fluctVarConst_t = (alpha_t-alpha_l)*kB*T/((1+alpha_t^2)*gamma*Vol)
-    // h_fluctVarConst_l = (alpha_l-gamma)*kB*T/(MU0*Vol)
+    // h_fluctVarConst_t = 2*(alpha_t-alpha_l)*kB*T/(MU0*gamma*alpha_t^2*Ms0*Vol)
+    // h_fluctVarConst_l = 2*(alpha_l-gamma)*kB*T/(MU0*Ms0*Vol)
     OC_REAL8m cell_alpha_t = fabs(alpha_t[i]);
     OC_REAL8m cell_alpha_l = fabs(alpha_l[i]);
     OC_REAL8m cell_gamma = fabs(gamma[i]);
     OC_REAL8m cell_vol = mesh->Volume(i);
-    hFluctVarConst_t[i] = fabs(cell_alpha_t-cell_alpha_l)/(cell_alpha_t*cell_alpha_t);
-    hFluctVarConst_t[i] *= kB_T[i];
-    hFluctVarConst_t[i] /= cell_gamma*cell_vol;
-    hFluctVarConst_l[i] = cell_alpha_l*cell_gamma;
-    hFluctVarConst_l[i] *= kB_T[i];
+    hFluctVarConst_t[i] = 2*fabs(cell_alpha_t-cell_alpha_l);
+    hFluctVarConst_t[i] *= kB_T[i]*Ms0_inverse[i];
+    hFluctVarConst_t[i] /= MU0*cell_gamma
+      *cell_alpha_t*cell_alpha_t*cell_vol;
+    hFluctVarConst_l[i] = 2*cell_alpha_l*cell_gamma;
+    hFluctVarConst_l[i] *= kB_T[i]*Ms0_inverse[i];
     hFluctVarConst_l[i] /= MU0*cell_vol;
     // TODO: Verify use of MU0
   }
