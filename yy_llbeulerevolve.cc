@@ -306,7 +306,8 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   // if not done, hFluct for first step may be calculated too often
   
   if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)) {
-    // First go. Fill out meshvalue arrays as necessary.
+    // First go or mesh change detected
+    // Initialize non-temperature-dependent mesh values
     Ms0.AdjustSize(mesh_);
     Ms0_inverse.AdjustSize(mesh_);
     if(!isMs0Set) {
@@ -317,14 +318,25 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       isMs0Set = 1;
     }
 
-    // Initialize non-temperature-dependent mesh values
+    Tc.AdjustSize(mesh_);
     J_init->FillMeshValue(mesh_,J);
     mu_init->FillMeshValue(mesh_,mu);
+    for(OC_INDEX i=0; i<size; i++) {
+      Tc[i] = J[i]/(3*KBoltzmann);
+    }
+
     alpha_t_init->FillMeshValue(mesh_,alpha_t0);
     gamma_init->FillMeshValue(mesh_,gamma);
+    if(!allow_signed_gamma) {
+      for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
+    }
+    if(gamma_style == GS_G) { // Convert to LL form
+      for(i=0;i<size;++i) {
+        gamma[i] /= (1+alpha_t0[i]*alpha_t0[i]);
+      }
+    }
 
     // Prepare temperature-dependent mesh value arrays
-    Tc.AdjustSize(mesh_);
     m_e.AdjustSize(mesh_);
     chi_l.AdjustSize(mesh_);
     alpha_t.AdjustSize(mesh_);
@@ -817,10 +829,6 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   // Update Tc first
   Update_m_e_chi_l(/*tol=*/1e-4);
 
-  if(!allow_signed_gamma) {
-    for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
-  }
-
   for(i=0;i<size;i++) {
     alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
     if(temperature[i] > Tc[i]) {
@@ -828,20 +836,10 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
     } else {
       alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
     }
-  }
 
-  if(gamma_style == GS_G) { // Convert to LL form
-    for(i=0;i<size;++i) {
-      // TODO: this should be alpha_t0[i] and run only once.
-      OC_REAL8m cell_alpha_t = alpha_t[i];
-      gamma[i] /= (1+cell_alpha_t*cell_alpha_t);
-    }
-  }
-
-  // Update variance of stochastic field
-  // h_fluctVarConst_t = (alpha_t-alpha_l)*kB*T/((1+alpha_t^2)*gamma*Vol)
-  // h_fluctVarConst_l = (alpha_l-gamma)*kB*T/(MU0*Vol)
-  for(OC_INDEX i=0;i<size;i++) {
+    // Update variance of stochastic field
+    // h_fluctVarConst_t = (alpha_t-alpha_l)*kB*T/((1+alpha_t^2)*gamma*Vol)
+    // h_fluctVarConst_l = (alpha_l-gamma)*kB*T/(MU0*Vol)
     OC_REAL8m cell_alpha_t = fabs(alpha_t[i]);
     OC_REAL8m cell_alpha_l = fabs(alpha_l[i]);
     OC_REAL8m cell_gamma = fabs(gamma[i]);
@@ -863,11 +861,6 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
   // Solve for the equilibrium spin polarization m_e using the Newton's
   // method. Returns 0 when A <= 0 or A >= 1/3.
   const OC_REAL8m size = J.Size();
-
-  // TODO: Run this only once at the beginning of simulation
-  for(OC_INDEX i=0; i<size; i++) {
-    Tc[i] = J[i]/(3*KBoltzmann);
-  }
 
   for(OC_INDEX i=0; i<size; i++) {
     OC_REAL8m A = kB_T[i]/J[i];
