@@ -193,6 +193,10 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
 				  Nb_ParseTclCommandLineRequest(InstanceName(),
 								 tempscript_opts,
 								 cmdoptreq));
+  } else {
+    temperature_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+                          (MakeNew("Oxs_UniformScalarField",director,
+                                   "value 0.0")));
   }
 
   // set temperature to zero to get an estimate for a reasonable stepsize
@@ -413,21 +417,23 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       // Longitudinal terms
       // Longitudinal exchange field for LLB equation
       OC_REAL8m temp = spin_[i]*total_field[i];
-      if(temperature[i] < Tc[i]) {
-        temp += 0.5/chi_l[i]
-          *(1-Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]*m_e[i]*m_e[i]))
-          *Ms_[i]*Ms0_inverse[i];
-      } else {
-        temp += -1.0/chi_l[i]
-          *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]))
-          *Ms_[i]*Ms0_inverse[i];
-      }
-      temp *= cell_gamma*cell_alpha_l;
-      scratch_l = temp*spin_[i];
-      dm_dt_l_[i] += scratch_l;
+      if(temperature[i] != 0) {
+        if(temperature[i] < Tc[i]) {
+          temp += 0.5/chi_l[i]
+            *(1-Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]*m_e[i]*m_e[i]))
+            *Ms_[i]*Ms0_inverse[i];
+        } else {
+          temp += -1.0/chi_l[i]
+            *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*Ms_[i]*Ms_[i]/(Ms0[i]*Ms0[i]))
+            *Ms_[i]*Ms0_inverse[i];
+        }
+        temp *= cell_gamma*cell_alpha_l;
+        scratch_l = temp*spin_[i];
+        dm_dt_l_[i] += scratch_l;
 
-      // Longitudinal stochastic field
-      dm_dt_l_[i] += hFluct_l[i];
+        // Longitudinal stochastic field
+        dm_dt_l_[i] += hFluct_l[i];
+      }
     }
   }
 
