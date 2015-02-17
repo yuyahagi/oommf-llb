@@ -127,13 +127,13 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
                                    "value 0.5")));
   }
 
-  if(HasInitValue("Tc")) {
-    OXS_GET_INIT_EXT_OBJECT("Tc",Oxs_ScalarField,Tc_init);
-  } else {
-    Tc_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
-                          (MakeNew("Oxs_UniformScalarField",director,
-                                   "value 400")));
-  }
+  //if(HasInitValue("Tc")) {
+  //  OXS_GET_INIT_EXT_OBJECT("Tc",Oxs_ScalarField,Tc_init);
+  //} else {
+  //  Tc_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+  //                        (MakeNew("Oxs_UniformScalarField",director,
+  //                                 "value 400")));
+  //}
 
   if(HasInitValue("J")) {
     OXS_GET_INIT_EXT_OBJECT("J",Oxs_ScalarField,J_init);
@@ -812,15 +812,20 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
 
   // TODO: This function should be InitMeshArrays or some of the following
   // should be moved to an appropriate place
-  alpha_t_init->FillMeshValue(mesh,alpha_t0);
-  gamma_init->FillMeshValue(mesh,gamma);
+
+  // Update temperature and Tc first
   temperature_init->FillMeshValue(mesh,temperature);
   kB_T.AdjustSize(mesh);
-  Tc_init->FillMeshValue(mesh,Tc);
+  //Tc_init->FillMeshValue(mesh,Tc);
+  Tc.AdjustSize(mesh);
   J_init->FillMeshValue(mesh,J);
   mu_init->FillMeshValue(mesh,mu);
   m_e.AdjustSize(mesh);
   chi_l.AdjustSize(mesh);
+  Update_m_e_chi_l(/*tol=*/1e-4);
+
+  alpha_t_init->FillMeshValue(mesh,alpha_t0);
+  gamma_init->FillMeshValue(mesh,gamma);
   alpha_t.AdjustSize(mesh);
   alpha_l.AdjustSize(mesh);
 
@@ -841,8 +846,6 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
   if(!allow_signed_gamma) {
     for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
   }
-
-  Update_m_e_chi_l(/*tol=*/1e-4);
 
   mesh_id = mesh->Id();
 }
@@ -889,6 +892,7 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
 
   for(OC_INDEX i=0; i<size; i++) {
     OC_REAL8m A = kB_T[i]/J[i];
+    Tc[i] = J[i]/(3*KBoltzmann);
     if(A <= 0 || A >= 1./3.) {
       m_e[i] = 0;
       chi_l[i] = 0;

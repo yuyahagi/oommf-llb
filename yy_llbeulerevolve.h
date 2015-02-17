@@ -125,8 +125,8 @@ private:
   void FillHFluctConst(const Oxs_Mesh* mesh);
   void InitHFluct(const Oxs_Mesh* mesh);
 
-  Oxs_OwnedPointer<Oxs_ScalarField> Tc_init;
-  Oxs_MeshValue<OC_REAL8m> Tc;  // Currie temperature in Kelvin
+  //Oxs_OwnedPointer<Oxs_ScalarField> Tc_init;
+  mutable Oxs_MeshValue<OC_REAL8m> Tc;  // Currie temperature in Kelvin
 
   // Exchange parameter J and atomistic magnetic moment mu
   // Used for longitudinal susceptibility
