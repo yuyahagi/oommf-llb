@@ -15,7 +15,7 @@ Destination mmDisp2 mmDisp
 #Schedule DataTable Archiv Stage 1
 Schedule DataTable mmDataTable Step 10
 Schedule DataTable mmGraph Step 10
-Schedule Oxs_TimeDriver::Magnetization mmDisp1 Step 10
+Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 10
 #Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
 
 
@@ -55,7 +55,17 @@ proc SlidingField { xcutoff xrel yrel zrel } {
    return 290
 }
 
-Specify YY_LLBEulerEvolve:evolver {
+Specify Oxs_UniformScalarField:Ms {
+  value 500e3
+}
+
+Specify Oxs_UniformVectorField:m0 {
+  norm 1
+  vector {1 0 0}
+}
+
+#Specify YY_LLBEulerEvolve:evolver {
+Specify YY_2LatEulerEvolve:evolver {
   do_precess 1
   gamma_LL 2.21e5
   alpha_t 0.1
@@ -68,15 +78,14 @@ Specify YY_LLBEulerEvolve:evolver {
   use_stochastic 1
 }
 
-Specify Oxs_TimeDriver {
+#Specify Oxs_TimeDriver {
+Specify YY_2LatTimeDriver {
   basename test01
-  vector_field_output_format {binary 4}
-  scalar_output_format %.15g
   evolver :evolver
   mesh :mesh
   stopping_time { 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 }
   stage_count 0
-  Ms { Oxs_UniformScalarField  {value 500e3} }
-  m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
+  Ms :Ms
+  m0 :m0
 }
 

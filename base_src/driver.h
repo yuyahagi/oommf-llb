@@ -36,7 +36,8 @@ public:
 };
 
 class Oxs_Driver: public Oxs_Ext {
-private:
+//private:
+protected:
 #if REPORT_TIME
   // driversteptime records time (cpu and wall) spent in the driver's
   // Step function.  This information is reported to stderr when
