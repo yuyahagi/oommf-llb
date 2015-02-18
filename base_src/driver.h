@@ -176,7 +176,8 @@ Oxs_ScalarOutput<Oxs_Driver> name##_output
   // Internal "Run" interface.  The difference with the external
   // interface is that the internal version includes a stage_increment
   // parameter for use by the SetStage method.
-  void Run(vector<OxsRunEvent>& results,OC_INT4m stage_increment);
+  virtual void Run(vector<OxsRunEvent>& results,OC_INT4m stage_increment);
+  // For 2 lattice simulation, it should be overridden.
 
   // Starting values.  These shadow fields in Oxs_SimState.
   // Use SetStartValues to copy to Oxs_SimState
@@ -239,10 +240,12 @@ public:
   // unable to step as requested.
 
   // External problem "Run" interface; called from director.
-  void Run(vector<OxsRunEvent>& results) {
+  virtual void Run(vector<OxsRunEvent>& results) {
     Run(results,1); // Call internal Run interface with default
     // stage increment (==1).
   }
+  // Virtual function for 2 lattice simulation
+  //virtual void Run_2lat(vector<OxsRunEvent>& results) =0;
 
   // GetIteration, SetStage and GetStage throw exceptions on errors.
   OC_UINT4m GetIteration() const;

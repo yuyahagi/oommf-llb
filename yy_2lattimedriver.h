@@ -56,8 +56,17 @@ Oxs_ScalarOutput<YY_2LatTimeDriver> name##_output
 
   // Done checks, called by parent YY_2LatDriver::IsStageDone and
   // YY_2LatDriver::IsRunDone functions.
-  virtual OC_BOOL ChildIsStageDone(const Oxs_SimState& state) const;
-  virtual OC_BOOL ChildIsRunDone(const Oxs_SimState& state) const;
+  virtual OC_BOOL ChildIsStageDone(const Oxs_SimState& state) const
+  { return 0; }
+  virtual OC_BOOL ChildIsRunDone(const Oxs_SimState& state) const
+  { return 0; }
+  virtual OC_BOOL ChildIsStageDone(
+      const Oxs_SimState& state,
+      const Oxs_SimState& state2) const;
+  virtual OC_BOOL ChildIsRunDone(
+      const Oxs_SimState& state,
+      const Oxs_SimState& state2) const;
+
 
   // Disable copy constructor and assignment operator by declaring
   // them without defining them.
@@ -79,22 +88,37 @@ public:
 
   // Generic interface
   virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const;
+  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState2() const;
 
   // Use FillState* and FillNewStageState* routines inherited from
   // parent.
 
   virtual OC_BOOL InitNewStage(Oxs_ConstKey<Oxs_SimState> state,
-                            Oxs_ConstKey<Oxs_SimState> prevstate);
+                            Oxs_ConstKey<Oxs_SimState> prevstate)
+  { return 0; } // Dummy
+  virtual OC_BOOL InitNewStage(
+      Oxs_ConstKey<Oxs_SimState> state,
+      Oxs_ConstKey<Oxs_SimState> state2,
+      Oxs_ConstKey<Oxs_SimState> prevstate,
+      Oxs_ConstKey<Oxs_SimState> prevstate2);
+
 
   virtual  OC_BOOL
   Step(Oxs_ConstKey<Oxs_SimState> current_state,
+       Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
-       Oxs_Key<Oxs_SimState>& next_state);
+       Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state2);
   //Step(Oxs_ConstKey<Oxs_SimState> current_state,
   //     const YY_2LatDriverStepInfo& step_info,
   //     Oxs_Key<Oxs_SimState>& next_state);
   // Returns true if step was successful, false if
   // unable to step as requested.
+  virtual  OC_BOOL
+  Step(Oxs_ConstKey<Oxs_SimState> current_state,
+       const Oxs_DriverStepInfo& step_info,
+       Oxs_Key<Oxs_SimState>& next_state)
+  { return 0; } // Dummy
 
   // Time driver interface
   virtual void FillStateSupplemental(Oxs_SimState& work_state) const;

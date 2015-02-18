@@ -102,9 +102,10 @@ public:
   virtual OC_BOOL
   Step(const YY_2LatTimeDriver* driver,
        Oxs_ConstKey<Oxs_SimState> current_state,
-       //const YY_2LatDriverStepInfo& step_info,
+       Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
-       Oxs_Key<Oxs_SimState>& next_state) = 0;
+       Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state2) = 0;
   // Returns true if step was successful, false if
   // unable to step as requested.  The evolver object
   // is responsible for calling driver->FillState()

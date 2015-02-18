@@ -56,6 +56,9 @@ private:
       const Oxs_SimState& state,
       const Oxs_SimState& state2) const;
 
+  // Internal "Run" interface.  The difference with the external
+  // interface is that the internal version includes a stage_increment
+  // parameter for use by the SetStage method.
   virtual void Run(vector<OxsRunEvent>& results,OC_INT4m stage_increment);
   // Overriding Oxs_Driver::Run().
 
@@ -75,6 +78,11 @@ private:
       const Oxs_SimState& state) const
   { return 0; }
 
+  // Disable copy constructor and assignment operator by declaring
+  // them without defining them.
+  YY_2LatDriver(const YY_2LatDriver&);
+  YY_2LatDriver& operator=(const YY_2LatDriver&);
+
 protected:
   YY_2LatDriver(const char* name,        // Child instance id
              Oxs_Director* newdtr,    // App director
@@ -93,22 +101,8 @@ public:
 
   virtual ~YY_2LatDriver();
 
-  // Disable default GetInitialState()
-  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const
-  { 
-    Oxs_ConstKey<Oxs_SimState> dummy;
-    return dummy;
-  }
+  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState2() const =0;
 
-  virtual void GetInitialState(
-      Oxs_ConstKey<Oxs_SimState>& state,
-      Oxs_ConstKey<Oxs_SimState>& state2) =0;
-
-  // Checks state against parent YY_2LatDriver class stage/run limiters,
-  // and if passes (i.e., not done), then calls ChildStage/RunDone
-  // functions.  If this is not enough flexibility, we could make
-  // these functions virtual, and move them into the protected:
-  // or public: sections, to allow child overrides.
   OC_BOOL IsStageDone(
       const Oxs_SimState& state,
       const Oxs_SimState& state2) const;

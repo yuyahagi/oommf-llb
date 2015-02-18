@@ -80,26 +80,36 @@ YY_2LatTimeDriver::YY_2LatTimeDriver(
   simulation_time_output.Register(director,0);
 
   // Reserve space for initial state (see GetInitialState() below)
-  director->ReserveSimulationStateRequest(1);
+  director->ReserveSimulationStateRequest(2);
 }
 
 // Added by YY
 #include <iostream>
 
-// YY modified. Check.
 Oxs_ConstKey<Oxs_SimState>
 YY_2LatTimeDriver::GetInitialState() const
 {
   Oxs_Key<Oxs_SimState> initial_state;
   director->GetNewSimulationState(initial_state);
-  std::cerr<<"Calling modified SetStartValues()."<<endl;
-  // Call modified SetStartValues().
   SetStartValues(initial_state);
   initial_state.GetReadReference();  // Release write lock.
   /// The read lock will be automatically released when the
   /// key "initial_state" is destroyed.
 
   return initial_state;
+}
+
+Oxs_ConstKey<Oxs_SimState>
+YY_2LatTimeDriver::GetInitialState2() const
+{
+  Oxs_Key<Oxs_SimState> initial_state2;
+  director->GetNewSimulationState(initial_state2);
+  SetStartValues2(initial_state2);
+  initial_state2.GetReadReference();  // Release write lock.
+  /// The read lock will be automatically released when the
+  /// key "initial_state" is destroyed.
+
+  return initial_state2;
 }
 
 
@@ -147,7 +157,9 @@ void YY_2LatTimeDriver::StageRequestCount
 }
 
 OC_BOOL
-YY_2LatTimeDriver::ChildIsStageDone(const Oxs_SimState& state) const
+YY_2LatTimeDriver::ChildIsStageDone(
+    const Oxs_SimState& state, 
+    const Oxs_SimState& state2) const
 {
   OC_UINT4m stage_index = state.stage_number;
 
@@ -163,6 +175,7 @@ YY_2LatTimeDriver::ChildIsStageDone(const Oxs_SimState& state) const
     return 1; // Stage done
   }
 
+  // TODO: check both states
   // dm_dt check
   Tcl_Interp* mif_interp = director->GetMifInterp();
   if(max_dm_dt_obj_ptr==NULL ||
@@ -199,7 +212,8 @@ YY_2LatTimeDriver::ChildIsStageDone(const Oxs_SimState& state) const
 }
 
 OC_BOOL
-YY_2LatTimeDriver::ChildIsRunDone(const Oxs_SimState& /* state */) const
+YY_2LatTimeDriver::ChildIsRunDone(const Oxs_SimState& /* state */,
+    const Oxs_SimState& /* state2 */) const
 {
   // No child-specific checks at this time...
   return 0; // Run not done
@@ -249,11 +263,12 @@ void YY_2LatTimeDriver::FillStateSupplemental(Oxs_SimState& work_state) const
 }
 
 OC_BOOL
-YY_2LatTimeDriver::Step
-(Oxs_ConstKey<Oxs_SimState> base_state,
- //const YY_2LatDriverStepInfo& stepinfo,
- const Oxs_DriverStepInfo& stepinfo,
- Oxs_Key<Oxs_SimState>& next_state)
+YY_2LatTimeDriver::Step(
+    Oxs_ConstKey<Oxs_SimState> base_state,
+    Oxs_ConstKey<Oxs_SimState> base_state2,
+    const Oxs_DriverStepInfo& stepinfo,
+    Oxs_Key<Oxs_SimState>& next_state,
+    Oxs_Key<Oxs_SimState>& next_state2)
 { // Returns true if step was successful, false if
   // unable to step as requested.
 
@@ -263,13 +278,21 @@ YY_2LatTimeDriver::Step
   // is destroyed.
   Oxs_Key<YY_2LatTimeEvolver> temp_key = evolver_key;
   YY_2LatTimeEvolver& evolver = temp_key.GetWriteReference();
-  return evolver.Step(this,base_state,stepinfo,next_state);
+  return evolver.Step(
+      this,
+      base_state,
+      base_state2,
+      stepinfo,
+      next_state,
+      next_state2);
 }
 
 OC_BOOL
-YY_2LatTimeDriver::InitNewStage
-(Oxs_ConstKey<Oxs_SimState> state,
- Oxs_ConstKey<Oxs_SimState> prevstate)
+YY_2LatTimeDriver::InitNewStage(
+    Oxs_ConstKey<Oxs_SimState> state,
+    Oxs_ConstKey<Oxs_SimState> state2,
+    Oxs_ConstKey<Oxs_SimState> prevstate,
+    Oxs_ConstKey<Oxs_SimState> prevstate2)
 {
   // Put write lock on evolver in order to get a non-const
   // pointer.  Use a temporary variable, temp_key, so
@@ -277,7 +300,11 @@ YY_2LatTimeDriver::InitNewStage
   // is destroyed.
   Oxs_Key<YY_2LatTimeEvolver> temp_key = evolver_key;
   YY_2LatTimeEvolver& evolver = temp_key.GetWriteReference();
-  return evolver.InitNewStage(this,state,prevstate);
+  // TODO: Default is NOP but check with the evolver.
+  OC_BOOL result = evolver.InitNewStage(this,state,prevstate);
+  OC_BOOL result2 = evolver.InitNewStage(this,state2,prevstate2);
+  return result & result2;
+  //return evolver.InitNewStage(this,state,prevstate);  // Default is NOP
 }
 
 

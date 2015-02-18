@@ -13,8 +13,8 @@ Destination mmDisp1 mmDisp
 Destination mmDisp2 mmDisp
 
 #Schedule DataTable Archiv Stage 1
-Schedule DataTable mmDataTable Step 10
-Schedule DataTable mmGraph Step 10
+Schedule DataTable mmDataTable Step 1
+Schedule DataTable mmGraph Step 1
 Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 10
 #Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
 
@@ -64,6 +64,15 @@ Specify Oxs_UniformVectorField:m0 {
   vector {1 0 0}
 }
 
+Specify Oxs_UniformScalarField:Ms2 {
+  value 200e3
+}
+
+Specify Oxs_UniformVectorField:m02 {
+  norm 1
+  vector {0 1 0}
+}
+
 #Specify YY_LLBEulerEvolve:evolver {
 Specify YY_2LatEulerEvolve:evolver {
   do_precess 1
@@ -87,5 +96,7 @@ Specify YY_2LatTimeDriver {
   stage_count 0
   Ms :Ms
   m0 :m0
+  Ms2 :Ms2
+  m02 :m02
 }
 
