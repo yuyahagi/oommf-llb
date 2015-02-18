@@ -23,6 +23,7 @@ Oxs_SimState::Oxs_SimState()
     last_timestep(0.),
     mesh(NULL),Ms(NULL),Ms_inverse(NULL),
     Ms0(NULL),Ms0_inverse(NULL),
+    other(NULL),
     stage_done(UNKNOWN), run_done(UNKNOWN)
 {}
 

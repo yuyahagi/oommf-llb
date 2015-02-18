@@ -87,8 +87,9 @@ public:
   // Number of stages wanted by driver
 
   // Generic interface
-  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const;
-  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState2() const;
+  virtual void GetInitialState(
+      Oxs_ConstKey<Oxs_SimState>& state,
+      Oxs_ConstKey<Oxs_SimState>& state2);
 
   // Use FillState* and FillNewStageState* routines inherited from
   // parent.

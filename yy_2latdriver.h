@@ -101,7 +101,16 @@ public:
 
   virtual ~YY_2LatDriver();
 
-  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState2() const =0;
+  // Disable default GetInitialState()
+  virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const
+  { 
+    Oxs_ConstKey<Oxs_SimState> dummy;
+    return dummy;
+  }
+
+  virtual void GetInitialState(
+      Oxs_ConstKey<Oxs_SimState>& state,
+      Oxs_ConstKey<Oxs_SimState>& state2) =0;
 
   OC_BOOL IsStageDone(
       const Oxs_SimState& state,

@@ -15,7 +15,8 @@ Destination mmDisp2 mmDisp
 #Schedule DataTable Archiv Stage 1
 Schedule DataTable mmDataTable Step 1
 Schedule DataTable mmGraph Step 1
-Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 10
+Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 1
+Schedule YY_2LatEulerEvolve:evolver:Magnetization2 mmDisp2 Step 1
 #Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
 
 

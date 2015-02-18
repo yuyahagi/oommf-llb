@@ -83,35 +83,35 @@ YY_2LatTimeDriver::YY_2LatTimeDriver(
   director->ReserveSimulationStateRequest(2);
 }
 
-// Added by YY
-#include <iostream>
-
-Oxs_ConstKey<Oxs_SimState>
-YY_2LatTimeDriver::GetInitialState() const
+void YY_2LatTimeDriver::GetInitialState(
+    Oxs_ConstKey<Oxs_SimState>& state,
+    Oxs_ConstKey<Oxs_SimState>& state2)
 {
-  Oxs_Key<Oxs_SimState> initial_state;
-  director->GetNewSimulationState(initial_state);
-  SetStartValues(initial_state);
-  initial_state.GetReadReference();  // Release write lock.
+  Oxs_Key<Oxs_SimState> tempstate;
+  Oxs_Key<Oxs_SimState> tempstate2;
+  director->GetNewSimulationState(tempstate);
+  tempstate.GetReadReference(); // Protect against overwrite
+  director->GetNewSimulationState(tempstate2);
+
+  SetStartValues(tempstate);
+  SetStartValues2(tempstate2);
+
+  // Couple the two sublattices with pointers
+  Oxs_SimState& tempstate_ = tempstate.GetWriteReference();
+  Oxs_SimState& tempstate2_ = tempstate2.GetWriteReference();
+  tempstate_.other = &tempstate2_;
+  tempstate2_.other = &tempstate_;
+
+  tempstate.GetReadReference();  // Release write lock.
+  tempstate2.GetReadReference();  // Release write lock.
   /// The read lock will be automatically released when the
   /// key "initial_state" is destroyed.
 
-  return initial_state;
+  state = tempstate;
+  state2 = tempstate2;
+
+  return;
 }
-
-Oxs_ConstKey<Oxs_SimState>
-YY_2LatTimeDriver::GetInitialState2() const
-{
-  Oxs_Key<Oxs_SimState> initial_state2;
-  director->GetNewSimulationState(initial_state2);
-  SetStartValues2(initial_state2);
-  initial_state2.GetReadReference();  // Release write lock.
-  /// The read lock will be automatically released when the
-  /// key "initial_state" is destroyed.
-
-  return initial_state2;
-}
-
 
 OC_BOOL YY_2LatTimeDriver::Init()
 { 

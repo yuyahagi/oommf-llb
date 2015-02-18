@@ -220,7 +220,7 @@ public:
 
   virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const =0;
 
-  const Oxs_SimState* GetCurrentState() const {
+  virtual const Oxs_SimState* GetCurrentState() const {
     return current_state.GetPtr();
   }
 

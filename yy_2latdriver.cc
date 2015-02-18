@@ -332,10 +332,7 @@ OC_BOOL YY_2LatDriver::Init()
   problem_status = OXSDRIVER_PS_INVALID;
   checkpoint_id = 0;
 
-  current_state = GetInitialState();
-  // Protect the first state. Otherwise, it will be overwritten by current_state2.
-  current_state.GetReadReference();
-  current_state2 = GetInitialState2();
+  GetInitialState(current_state, current_state2);
 
   if (current_state.GetPtr() == NULL || current_state2.GetPtr() == NULL) {
     success = 0; // Error.  Perhaps an exception throw would be better?
@@ -507,6 +504,8 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
     switch(problem_status) {
       case OXSDRIVER_PS_INSIDE_STAGE:
         // Most common case.
+        current_state.GetReadReference(); // Safety: protection against overwrite
+        current_state2.GetReadReference();
         director->GetNewSimulationState(next_state);
         director->GetNewSimulationState(next_state2);
         // NOTE: At this point next_state holds a write lock.

@@ -110,8 +110,8 @@ private:
 
   // Scratch space
   Oxs_MeshValue<OC_REAL8m> new_energy;
-  Oxs_MeshValue<ThreeVector> new_dm_dt_t;
-  Oxs_MeshValue<ThreeVector> new_dm_dt_l;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_t, new_dm_dt_t2;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_l, new_dm_dt_l2;
 
   Oxs_MeshValue<ThreeVector> total_field;
 
@@ -189,6 +189,8 @@ private:
   Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_t_output;
   Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_l_output;
   Oxs_VectorFieldOutput<YY_2LatEulerEvolve> mxH_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> spin2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> magnetization2_output;
 
 public:
   virtual const char* ClassName() const; // ClassName() is
