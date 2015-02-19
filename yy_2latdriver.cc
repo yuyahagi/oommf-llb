@@ -50,15 +50,36 @@ YY_2LatDriver::YY_2LatDriver
   ) : Oxs_Driver(name,newdtr,argstr)
 // Parent Oxs_Driver initializes members
 {
-  Oxs_OwnedPointer<Oxs_ScalarField> Msinit;
-  OXS_GET_INIT_EXT_OBJECT("Ms2",Oxs_ScalarField,Msinit);
+  // Reserve additional simulation states for the sublattices
+  // (current and next state for each of two sublattices)
+  // Parent Oxs_Driver requests 2 states, making 6 in total
+  director->ReserveSimulationStateRequest(4);
 
+  Oxs_OwnedPointer<Oxs_ScalarField> Msinit1, Msinit2;
+  OXS_GET_INIT_EXT_OBJECT("Ms1",Oxs_ScalarField,Msinit1);
+  OXS_GET_INIT_EXT_OBJECT("Ms2",Oxs_ScalarField,Msinit2);
+  OXS_GET_INIT_EXT_OBJECT("m01",Oxs_VectorField,m01);
   OXS_GET_INIT_EXT_OBJECT("m02",Oxs_VectorField,m02);
 
-  // Fill Ms and Ms_inverse array, and verify that Ms is non-negative.
-  Msinit->FillMeshValue(mesh_obj.GetPtr(),Ms2);
+  // Fill Ms and Ms_inverse array for sublattices
+  Msinit1->FillMeshValue(mesh_obj.GetPtr(),Ms1);
+  Msinit2->FillMeshValue(mesh_obj.GetPtr(),Ms2);
+  Ms_inverse1.AdjustSize(mesh_obj.GetPtr());
   Ms_inverse2.AdjustSize(mesh_obj.GetPtr());
+
   for(OC_INDEX icell=0;icell<mesh_obj->Size();icell++) {
+    if(Ms1[icell]<0.0) {
+      char buf[1024];
+      Oc_Snprintf(buf,sizeof(buf),
+                  "Negative Ms1 value (%g) detected at mesh index %u.",
+                  static_cast<double>(Ms1[icell]),icell);
+      throw Oxs_ExtError(this,String(buf));
+    } else if(Ms1[icell]==0.0) {
+      Ms_inverse1[icell]=0.0; // Special case handling
+    } else {
+      Ms_inverse1[icell]=1.0/Ms1[icell];
+    }
+
     if(Ms2[icell]<0.0) {
       char buf[1024];
       Oc_Snprintf(buf,sizeof(buf),
@@ -80,63 +101,16 @@ YY_2LatDriver::~YY_2LatDriver()
 }
 
 // The following routine is called by GetInitialState() in child classes.
-void YY_2LatDriver::SetStartValues (Oxs_SimState& istate) const
-{
-  OC_BOOL fresh_start = 1;
-  //  Not supporting restart yet.
-
-  if(fresh_start) {
-    istate.previous_state_id = 0;
-    istate.iteration_count       = start_iteration;
-    istate.stage_number          = start_stage;
-    istate.stage_iteration_count = start_stage_iteration;
-    istate.stage_start_time      = start_stage_start_time;
-    istate.stage_elapsed_time    = start_stage_elapsed_time;
-    istate.last_timestep         = start_last_timestep;
-    istate.mesh = mesh_key.GetPtr();
-    // To circumvent the const regulation of Ms, construct a temporary
-    // variable using the value of Ms.
-    Oxs_MeshValue<OC_REAL8m> Ms_temp(Ms);
-    Oxs_MeshValue<OC_REAL8m> Ms_inverse_temp(Ms_inverse);
-    istate.Ms = &Ms_temp;
-    istate.Ms_inverse = &Ms_inverse_temp;
-    m0->FillMeshValue(istate.mesh,istate.spin);
-    // Insure that all spins are unit vectors
-    OC_INDEX size = istate.spin.Size();
-    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
-  }
-}
-
-void YY_2LatDriver::SetStartValues2 (Oxs_SimState& istate) const
-{
-  OC_BOOL fresh_start = 1;
-  if(fresh_start) {
-    istate.previous_state_id = 0;
-    istate.iteration_count       = start_iteration;
-    istate.stage_number          = start_stage;
-    istate.stage_iteration_count = start_stage_iteration;
-    istate.stage_start_time      = start_stage_start_time;
-    istate.stage_elapsed_time    = start_stage_elapsed_time;
-    istate.last_timestep         = start_last_timestep;
-    istate.mesh = mesh_key.GetPtr();
-    // To circumvent the const regulation of Ms, construct a temporary
-    // variable using the value of Ms.
-    Oxs_MeshValue<OC_REAL8m> Ms_temp(Ms2);
-    Oxs_MeshValue<OC_REAL8m> Ms_inverse_temp(Ms_inverse2);
-    istate.Ms = &Ms_temp;
-    istate.Ms_inverse = &Ms_inverse_temp;
-    m02->FillMeshValue(istate.mesh,istate.spin);
-    // Insure that all spins are unit vectors
-    OC_INDEX size = istate.spin.Size();
-    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
-  }
-}
-
-void YY_2LatDriver::SetStartValues (Oxs_Key<Oxs_SimState>& initial_state) const
+void YY_2LatDriver::SetStartValues(
+    Oxs_Key<Oxs_SimState>& initial_state,
+    Oxs_Key<Oxs_SimState>& initial_state1,
+    Oxs_Key<Oxs_SimState>& initial_state2) const
 {
   OC_BOOL fresh_start = 1;
   int rflag = director->GetRestartFlag();
   Oxs_SimState& istate = initial_state.GetWriteReference(); // Write lock
+  Oxs_SimState& istate1 = initial_state1.GetWriteReference();
+  Oxs_SimState& istate2 = initial_state2.GetWriteReference();
 
   // No checkpoint file support at this point
 
@@ -150,45 +124,63 @@ void YY_2LatDriver::SetStartValues (Oxs_Key<Oxs_SimState>& initial_state) const
     istate.last_timestep         = start_last_timestep;
     istate.mesh = mesh_key.GetPtr();
 
+    istate1.previous_state_id = 0;
+    istate1.iteration_count       = start_iteration;
+    istate1.stage_number          = start_stage;
+    istate1.stage_iteration_count = start_stage_iteration;
+    istate1.stage_start_time      = start_stage_start_time;
+    istate1.stage_elapsed_time    = start_stage_elapsed_time;
+    istate1.last_timestep         = start_last_timestep;
+    istate1.mesh = mesh_key.GetPtr();
+
+    istate2.previous_state_id = 0;
+    istate2.iteration_count       = start_iteration;
+    istate2.stage_number          = start_stage;
+    istate2.stage_iteration_count = start_stage_iteration;
+    istate2.stage_start_time      = start_stage_start_time;
+    istate2.stage_elapsed_time    = start_stage_elapsed_time;
+    istate2.last_timestep         = start_last_timestep;
+    istate2.mesh = mesh_key.GetPtr();
+
     istate.Ms = &Ms;
     istate.Ms_inverse = &Ms_inverse;
-    Ms = static_cast<const Oxs_MeshValue<OC_REAL8m>&>(Ms);
-    Ms_inverse = Ms_inverse;
     m0->FillMeshValue(istate.mesh,istate.spin);
-    // Insure that all spins are unit vectors
+    istate1.Ms = &Ms1;
+    istate1.Ms_inverse = &Ms_inverse1;
+    m01->FillMeshValue(istate1.mesh,istate1.spin);
+    istate2.Ms = &Ms2;
+    istate2.Ms_inverse = &Ms_inverse2;
+    m02->FillMeshValue(istate2.mesh,istate2.spin);
+
+    // Insure that spins are unit vectors
     OC_INDEX size = istate.spin.Size();
-    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
+    for(OC_INDEX i=0;i<size;i++) {
+      istate1.spin[i].MakeUnit();
+      istate2.spin[i].MakeUnit();
+    }
+
+    // istate stores total magnetization
+    ThreeVector tempspin;
+    Oxs_MeshValue<OC_REAL8m>& Ms_ = *(istate.Ms);
+    Oxs_MeshValue<OC_REAL8m>& Ms_inverse_ = *(istate.Ms_inverse);
+    const Oxs_MeshValue<OC_REAL8m>& Ms1_ = *(istate1.Ms);
+    const Oxs_MeshValue<OC_REAL8m>& Ms2_ = *(istate2.Ms);
+    for(OC_INDEX i=0; i<size; i++) {
+      tempspin = Ms1_[i]*istate1.spin[i];
+      tempspin += Ms2_[i]*istate2.spin[i];
+      Ms_[i] = sqrt(tempspin.MagSq());
+      tempspin.MakeUnit();
+      istate.spin[i] = tempspin;
+      if(Ms_[i] != 0.0) {
+        Ms_inverse_[i] = 1.0/Ms_[i];
+      } else {
+        Ms_inverse_[i] = 0.0;
+      }
+    }
 
     initial_state.GetReadReference();
-  }
-}
-
-void YY_2LatDriver::SetStartValues2 (Oxs_Key<Oxs_SimState>& initial_state) const
-{
-  OC_BOOL fresh_start = 1;
-  int rflag = director->GetRestartFlag();
-  Oxs_SimState& istate = initial_state.GetWriteReference(); // Write lock
-
-  if(fresh_start) {
-    istate.previous_state_id = 0;
-    istate.iteration_count       = start_iteration;
-    istate.stage_number          = start_stage;
-    istate.stage_iteration_count = start_stage_iteration;
-    istate.stage_start_time      = start_stage_start_time;
-    istate.stage_elapsed_time    = start_stage_elapsed_time;
-    istate.last_timestep         = start_last_timestep;
-    istate.mesh = mesh_key.GetPtr();
-
-    istate.Ms = &Ms2;
-    istate.Ms_inverse = &Ms_inverse2;
-    Ms2 = static_cast<const Oxs_MeshValue<OC_REAL8m>&>(Ms2);
-    Ms_inverse2 = Ms_inverse2;
-    m02->FillMeshValue(istate.mesh,istate.spin);
-    // Insure that all spins are unit vectors
-    OC_INDEX size = istate.spin.Size();
-    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
-
-    initial_state.GetReadReference();
+    initial_state1.GetReadReference();
+    initial_state2.GetReadReference();
   }
 }
 
@@ -332,20 +324,24 @@ OC_BOOL YY_2LatDriver::Init()
   problem_status = OXSDRIVER_PS_INVALID;
   checkpoint_id = 0;
 
-  GetInitialState(current_state, current_state2);
+  GetInitialState(current_state, current_state1, current_state2);
 
-  if (current_state.GetPtr() == NULL || current_state2.GetPtr() == NULL) {
+  if (current_state.GetPtr() == NULL
+      || current_state1.GetPtr() == NULL
+      || current_state2.GetPtr() == NULL) {
     success = 0; // Error.  Perhaps an exception throw would be better?
   } else {
     const Oxs_SimState& cstate = current_state.GetReadReference();
+    const Oxs_SimState& cstate1 = current_state1.GetReadReference();
     const Oxs_SimState& cstate2 = current_state2.GetReadReference();
     // If initial state was loaded from a checkpoint file, then
     // the problem status should be available from the state
     // derived data.  Otherwise, use the default STAGE_START
     // status.
     OC_REAL8m value;
-    if(cstate.GetDerivedData("YY_2LatDriver Problem Status",value)
-        && cstate2.GetDerivedData("YY_2LatDriver Problem Status",value)) {
+    if( cstate.GetDerivedData("YY_2LatDriver Problem Status",value)
+        && cstate2.GetDerivedData("YY_2LatDriver Problem Status",value)
+        && cstate2.GetDerivedData("YY_2LatDriver Problem Status",value) ) {
       problem_status = FloatToProblemStatus(value);
     } else {
       problem_status = OXSDRIVER_PS_STAGE_START;
@@ -363,6 +359,7 @@ OC_BOOL YY_2LatDriver::Init()
 
 OC_BOOL YY_2LatDriver::IsStageDone(
     const Oxs_SimState& state,
+    const Oxs_SimState& state1,
     const Oxs_SimState& state2) const
 {
   if(state.stage_done == Oxs_SimState::DONE
@@ -399,7 +396,7 @@ OC_BOOL YY_2LatDriver::IsStageDone(
   }
 
   // Otherwise, leave it up to the child
-  if(ChildIsStageDone(state,state2)) {
+  if(ChildIsStageDone(state,state1,state2)) {
     state.stage_done = Oxs_SimState::DONE;
     state2.stage_done = Oxs_SimState::DONE;
     return 1;
@@ -412,6 +409,7 @@ OC_BOOL YY_2LatDriver::IsStageDone(
 
 OC_BOOL YY_2LatDriver::IsRunDone(
     const Oxs_SimState& state,
+    const Oxs_SimState& state1,
     const Oxs_SimState& state2) const
 {
   if(state.run_done == Oxs_SimState::DONE
@@ -433,7 +431,7 @@ OC_BOOL YY_2LatDriver::IsRunDone(
   if(number_of_stages > 0) {
     if( state.stage_number >= number_of_stages ||
         (state.stage_number+1 == number_of_stages
-        && IsStageDone(state,state2))) {
+        && IsStageDone(state,state1,state2))) {
       state.run_done = Oxs_SimState::DONE;
       state2.run_done = Oxs_SimState::DONE;
       return 1;
@@ -441,7 +439,7 @@ OC_BOOL YY_2LatDriver::IsRunDone(
   }      
 
   // Otherwise, leave it up to the child
-  if(ChildIsRunDone(state,state2)) {
+  if(ChildIsRunDone(state,state1,state2)) {
     state.run_done = Oxs_SimState::DONE;
     state2.run_done = Oxs_SimState::DONE;
     return 1;
@@ -455,7 +453,9 @@ OC_BOOL YY_2LatDriver::IsRunDone(
 void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
                      OC_INT4m stage_increment)
 { // Called by director
-  if(current_state.GetPtr() == NULL || current_state2.GetPtr() == NULL) {
+  if(current_state.GetPtr() == NULL
+      || current_state1.GetPtr() == NULL
+      || current_state2.GetPtr() == NULL) {
     // Current state is not initialized.
     String msg="Current state in YY_2LatDriver is not initialized;"
       " This is probably the fault of the child class "
@@ -463,7 +463,9 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
     throw Oxs_ExtError(this,msg);
   }
 
-  if(current_state.ObjectId()==0 || current_state2.ObjectId()==0) {
+  if(current_state.ObjectId()==0
+      || current_state1.ObjectId()==0
+      || current_state2.ObjectId()==0) {
     // Current state is not fixed, i.e., is incomplete or transient.
     // To some extent, this check is not necessary, because key should
     // throw an exception on GetReadReference if the pointed to Oxs_Lock
@@ -496,17 +498,21 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
   while (step_events<max_steps && step_calls<allowed_step_calls
          && problem_status!=OXSDRIVER_PS_DONE) {
     Oxs_Key<Oxs_SimState> next_state;
-    Oxs_ConstKey<Oxs_SimState> previous_state; // Used for state transitions
+    Oxs_Key<Oxs_SimState> next_state1;
     Oxs_Key<Oxs_SimState> next_state2;
-    Oxs_ConstKey<Oxs_SimState> previous_state2; // Used for state transitions
+    Oxs_ConstKey<Oxs_SimState> previous_state; // Used for state transitions
+    Oxs_ConstKey<Oxs_SimState> previous_state1;
+    Oxs_ConstKey<Oxs_SimState> previous_state2;
     OC_BOOL step_taken=0;
     OC_BOOL step_result=0;
     switch(problem_status) {
       case OXSDRIVER_PS_INSIDE_STAGE:
         // Most common case.
         current_state.GetReadReference(); // Safety: protection against overwrite
+        current_state1.GetReadReference();
         current_state2.GetReadReference();
         director->GetNewSimulationState(next_state);
+        director->GetNewSimulationState(next_state1);
         director->GetNewSimulationState(next_state2);
         // NOTE: At this point next_state holds a write lock.
         //   The Step() function can make additional calls
@@ -519,9 +525,11 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
 #endif // REPORT_TIME
         step_result = Step(
             current_state,
+            current_state1,
             current_state2,
             step_info,
             next_state,
+            next_state1,
             next_state2);
 #if REPORT_TIME
         driversteptime.Stop();
@@ -532,9 +540,11 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
           next_state.GetReadReference();  // Safety write lock release
           next_state2.GetReadReference();  // Safety write lock release
           current_state = next_state; // Free old read lock
+          current_state1 = next_state1; // Free old read lock
           current_state2 = next_state2; // Free old read lock
           if(report_max_spin_angle) {
             UpdateSpinAngleData(
+                *(current_state.GetPtr()),
                 *(current_state.GetPtr()),
                 *(current_state2.GetPtr())); // Update
             /// max spin angle data on each accepted step.  Might want
@@ -553,20 +563,25 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
 
       case OXSDRIVER_PS_STAGE_END: {
         const Oxs_SimState& cstate = current_state.GetReadReference();
+        const Oxs_SimState& cstate1 = current_state1.GetReadReference();
         const Oxs_SimState& cstate2 = current_state2.GetReadReference();
         director->GetNewSimulationState(next_state);
-        Oxs_SimState& nstate = next_state.GetWriteReference();
+        director->GetNewSimulationState(next_state1);
         director->GetNewSimulationState(next_state2);
+        Oxs_SimState& nstate = next_state.GetWriteReference();
+        Oxs_SimState& nstate1 = next_state1.GetWriteReference();
         Oxs_SimState& nstate2 = next_state2.GetWriteReference();
-        FillNewStageState(cstate,cstate.stage_number+stage_increment,
-                          nstate);
-        FillNewStageState(cstate2,cstate2.stage_number+stage_increment,
-                          nstate2);
+        FillNewStageState(cstate,cstate.stage_number+stage_increment,nstate);
+        FillNewStageState(cstate1,cstate1.stage_number+stage_increment,nstate1);
+        FillNewStageState(cstate2,cstate2.stage_number+stage_increment,nstate2);
         next_state.GetReadReference(); // Release write lock
+        next_state1.GetReadReference(); // Release write lock
         next_state2.GetReadReference(); // Release write lock
         previous_state.Swap(current_state); // For state transistion
+        previous_state1.Swap(current_state1); // For state transistion
         previous_state2.Swap(current_state2); // For state transistion
         current_state = next_state;
+        current_state1 = next_state1;
         current_state2 = next_state2;
       }
       // NB: STAGE_END flow continues through STAGE_START block
@@ -574,11 +589,14 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
         // Default: NOP
         InitNewStage(
             current_state,
+            current_state1,
             current_state2,
             previous_state,
+            previous_state1,
             previous_state2); // Send state to
                               /// evolver for bookkeeping updates.
         previous_state.Release();
+        previous_state1.Release();
         previous_state2.Release();
         step_taken=1;
         ++step_info.total_attempt_count;
@@ -594,13 +612,14 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
 
     if(step_taken) {
       const Oxs_SimState& cstate = current_state.GetReadReference();
+      const Oxs_SimState& cstate1 = current_state1.GetReadReference();
       const Oxs_SimState& cstate2 = current_state2.GetReadReference();
       ++step_events;
       problem_status = OXSDRIVER_PS_INSIDE_STAGE;
-      if (IsStageDone(cstate,cstate2)) {
+      if (IsStageDone(cstate,cstate1,cstate2)) {
         ++stage_events;
         problem_status = OXSDRIVER_PS_STAGE_END;
-        if (IsRunDone(cstate,cstate2)) {
+        if (IsRunDone(cstate,cstate1,cstate2)) {
           ++done_event;
           problem_status = OXSDRIVER_PS_DONE;
         }
@@ -639,6 +658,8 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
 #else
       cstate.AddDerivedData("YY_2LatDriver Problem Status",
                             static_cast<OC_REAL8m>(problem_status));
+      cstate1.AddDerivedData("YY_2LatDriver Problem Status",
+                            static_cast<OC_REAL8m>(problem_status));
       cstate2.AddDerivedData("YY_2LatDriver Problem Status",
                             static_cast<OC_REAL8m>(problem_status));
 #endif
@@ -665,6 +686,7 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
 // TODO: Report max spin angle for both sublattices.
 void YY_2LatDriver::UpdateSpinAngleData(
     const Oxs_SimState& state,
+    const Oxs_SimState& state1,
     const Oxs_SimState& state2) const
 {
   if(!report_max_spin_angle) {

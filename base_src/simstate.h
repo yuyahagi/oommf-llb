@@ -89,7 +89,8 @@ public:
   Oxs_MeshValue<ThreeVector> spin;
 
   // For 2 lattice simulation, pointer to the other sublattice
-  Oxs_SimState* other;
+  Oxs_SimState* lattice1;
+  Oxs_SimState* lattice2;
 
   void CloneHeader(Oxs_SimState& new_state) const;
   /// Copies all of the above data, except for the spin data.

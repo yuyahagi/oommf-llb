@@ -71,21 +71,27 @@ protected:
   /// call this function in their Init() routines.  The main purpose
   /// of this function is to initialize output variables.
 
-  void GetEnergyDensity(const Oxs_SimState& state,
-                        Oxs_MeshValue<OC_REAL8m>& energy,
-                        Oxs_MeshValue<ThreeVector>* mxH_req,
-                        Oxs_MeshValue<ThreeVector>* H_req,
-                        OC_REAL8m& pE_pt,
-                        OC_REAL8m& total_E);
+  void GetEnergyDensity(
+      const Oxs_SimState& state,
+      Oxs_MeshValue<OC_REAL8m>& energy,
+      Oxs_MeshValue<ThreeVector>* mxH1_req,
+      Oxs_MeshValue<ThreeVector>* mxH2_req,
+      Oxs_MeshValue<ThreeVector>* H1_req1,
+      Oxs_MeshValue<ThreeVector>* H2_reqr2,
+      OC_REAL8m& pE_pt,
+      OC_REAL8m& total_E);
 
-  void GetEnergyDensity(const Oxs_SimState& state,
+  void GetEnergyDensity(
+      const Oxs_SimState& state,
 			Oxs_MeshValue<OC_REAL8m>& energy,
-			Oxs_MeshValue<ThreeVector>* mxH_req,
-			Oxs_MeshValue<ThreeVector>* H_req,
+      Oxs_MeshValue<ThreeVector>* mxH1_req,
+      Oxs_MeshValue<ThreeVector>* mxH2_req,
+      Oxs_MeshValue<ThreeVector>* H1_req,
+      Oxs_MeshValue<ThreeVector>* H2_req,
 			OC_REAL8m& pE_pt) {
     // This interface for backwards compatibility
     OC_REAL8m dummy_E;
-    GetEnergyDensity(state,energy,mxH_req,H_req,pE_pt,dummy_E);
+    GetEnergyDensity(state,energy,mxH1_req,mxH2_req,H1_req,H2_req,pE_pt,dummy_E);
   }
 
 public:
@@ -102,9 +108,11 @@ public:
   virtual OC_BOOL
   Step(const YY_2LatTimeDriver* driver,
        Oxs_ConstKey<Oxs_SimState> current_state,
+       Oxs_ConstKey<Oxs_SimState> current_state1,
        Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
        Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state1,
        Oxs_Key<Oxs_SimState>& next_state2) = 0;
   // Returns true if step was successful, false if
   // unable to step as requested.  The evolver object

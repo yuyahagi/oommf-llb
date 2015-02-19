@@ -46,14 +46,16 @@ struct OxsRunEvent;
 
 class YY_2LatDriver: public Oxs_Driver {
 private:
+  Oxs_ConstKey<Oxs_SimState> current_state1;
   Oxs_ConstKey<Oxs_SimState> current_state2;
 
-  mutable Oxs_MeshValue<OC_REAL8m> Ms2;  // Saturation magnetization
-  mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse2;  // 1/Ms
-  Oxs_OwnedPointer<Oxs_VectorField> m02; // Initial spin configuration
+  mutable Oxs_MeshValue<OC_REAL8m> Ms1, Ms2;  // Saturation magnetization
+  mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse1, Ms_inverse2;  // 1/Ms
+  Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
 
   void UpdateSpinAngleData(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const;
 
   // Internal "Run" interface.  The difference with the external
@@ -66,9 +68,11 @@ private:
   // problem end events.
   virtual OC_BOOL ChildIsStageDone(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const =0;
   virtual OC_BOOL ChildIsRunDone(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const =0;
   // Disable default functions for standard simulation
   virtual OC_BOOL ChildIsStageDone(
@@ -88,10 +92,20 @@ protected:
              Oxs_Director* newdtr,    // App director
 	     const char* argstr);     // Args
 
-  void SetStartValues(Oxs_SimState& istate) const;
-  void SetStartValues(Oxs_Key<Oxs_SimState>& initial_state) const;
-  void SetStartValues2(Oxs_SimState& istate) const;
-  void SetStartValues2(Oxs_Key<Oxs_SimState>& initial_state) const;
+  // Handler of two sublattice simulation states
+  void CombineSubLattices(Oxs_SimState& istate1,
+      Oxs_SimState& istate2) const;
+
+  void SetStartValues(
+      Oxs_Key<Oxs_SimState>& initial_state,
+      Oxs_Key<Oxs_SimState>& initial_state1,
+      Oxs_Key<Oxs_SimState>& initial_state2) const;
+
+  // Disable SetStartValues for 1 lattice simulation for safety
+  void SetStartValues(Oxs_SimState& istate) const
+  { return; }
+  void SetStartValues(Oxs_Key<Oxs_SimState>& initial_state) const
+  { return; }
 
   virtual OC_BOOL Init();  // All children of YY_2LatDriver *must* call
   /// this function in their Init() routines.  The main purpose
@@ -110,19 +124,25 @@ public:
 
   virtual void GetInitialState(
       Oxs_ConstKey<Oxs_SimState>& state,
+      Oxs_ConstKey<Oxs_SimState>& state1,
       Oxs_ConstKey<Oxs_SimState>& state2) =0;
 
   OC_BOOL IsStageDone(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const;
-  OC_BOOL IsRunDone(const Oxs_SimState& state,
+  OC_BOOL IsRunDone(
+      const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const;
 
   virtual  OC_BOOL
   Step(Oxs_ConstKey<Oxs_SimState> current_state,
+      Oxs_ConstKey<Oxs_SimState> current_state1,
       Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
        Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state1,
        Oxs_Key<Oxs_SimState>& next_state2)=0;
 
   // External problem "Run" interface; called from director.
@@ -133,8 +153,10 @@ public:
 
   virtual OC_BOOL InitNewStage(
       Oxs_ConstKey<Oxs_SimState> state,
+      Oxs_ConstKey<Oxs_SimState> state1,
       Oxs_ConstKey<Oxs_SimState> state2,
       Oxs_ConstKey<Oxs_SimState> prevstate,
+      Oxs_ConstKey<Oxs_SimState> prevstate1,
       Oxs_ConstKey<Oxs_SimState> prevstate2) =0;
 };
 

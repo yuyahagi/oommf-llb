@@ -210,11 +210,21 @@ YY_2LatEulerEvolve::YY_2LatEulerEvolve(
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   delta_E_output.Setup(this,InstanceName(),"Delta E","J",0,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  dm_dt_t_output.Setup(this,InstanceName(),"Trans. dm/dt","rad/s",1,
+  dm_dt_t1_output.Setup(this,InstanceName(),"dm/dt (trans.)1","rad/s",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  dm_dt_l_output.Setup(this,InstanceName(),"Long. dm/dt","rad/s",1,
+  dm_dt_l1_output.Setup(this,InstanceName(),"dm/dt (long.)1","rad/s",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  mxH_output.Setup(this,InstanceName(),"mxH","A/m",1,
+  mxH1_output.Setup(this,InstanceName(),"mxH1","A/m",1,
+     &YY_2LatEulerEvolve::UpdateDerivedOutputs);
+  spin1_output.Setup(this,InstanceName(),"spin1","",1,
+      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
+  magnetization1_output.Setup(this,InstanceName(),"Magnetization1","A/m",1,
+      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
+  dm_dt_t2_output.Setup(this,InstanceName(),"dm/dt (trans.)2","rad/s",1,
+     &YY_2LatEulerEvolve::UpdateDerivedOutputs);
+  dm_dt_l2_output.Setup(this,InstanceName(),"dm/dt (long.)2","rad/s",1,
+     &YY_2LatEulerEvolve::UpdateDerivedOutputs);
+  mxH2_output.Setup(this,InstanceName(),"mxH2","A/m",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   spin2_output.Setup(this,InstanceName(),"spin2","",1,
       &YY_2LatEulerEvolve::UpdateDerivedOutputs);
@@ -230,17 +240,27 @@ OC_BOOL YY_2LatEulerEvolve::Init()
   max_dm_dt_output.Register(director,-5);
   dE_dt_output.Register(director,-5);
   delta_E_output.Register(director,-5);
-  dm_dt_t_output.Register(director,-5);
-  dm_dt_l_output.Register(director,-5);
-  mxH_output.Register(director,-5);
+  dm_dt_t1_output.Register(director,-5);
+  dm_dt_l1_output.Register(director,-5);
+  mxH1_output.Register(director,-5);
+  spin1_output.Register(director,-5);
+  magnetization1_output.Register(director,-5);
+  dm_dt_t2_output.Register(director,-5);
+  dm_dt_l2_output.Register(director,-5);
+  mxH2_output.Register(director,-5);
   spin2_output.Register(director,-5);
   magnetization2_output.Register(director,-5);
 
   // dm_dt and mxH output caches are used for intermediate storage,
   // so enable caching.
-  dm_dt_t_output.CacheRequestIncrement(1);
-  dm_dt_l_output.CacheRequestIncrement(1);
-  mxH_output.CacheRequestIncrement(1);
+  dm_dt_t1_output.CacheRequestIncrement(1);
+  dm_dt_l1_output.CacheRequestIncrement(1);
+  mxH1_output.CacheRequestIncrement(1);
+  spin1_output.CacheRequestIncrement(1);
+  magnetization1_output.CacheRequestIncrement(1);
+  dm_dt_t2_output.CacheRequestIncrement(1);
+  dm_dt_l2_output.CacheRequestIncrement(1);
+  mxH2_output.CacheRequestIncrement(1);
   spin2_output.CacheRequestIncrement(1);
   magnetization2_output.CacheRequestIncrement(1);
 
@@ -248,11 +268,13 @@ OC_BOOL YY_2LatEulerEvolve::Init()
   gamma.Release();
   Tc.Release();
   Ms0.Release();
+  Ms0_inverse.Release();
   energy.Release();
-  total_field.Release();
+  total_field1.Release();
+  total_field2.Release();
   new_energy.Release();
-  new_dm_dt_t.Release();
-  new_dm_dt_l.Release();
+  new_dm_dt_t1.Release();
+  new_dm_dt_l1.Release();
   new_dm_dt_t2.Release();
   new_dm_dt_l2.Release();
 
@@ -355,7 +377,8 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
     hFluctVarConst_l.AdjustSize(mesh_);
 
     // Other mesh value arrays
-    total_field.AdjustSize(mesh_);
+    total_field1.AdjustSize(mesh_);
+    total_field2.AdjustSize(mesh_);
     hFluct_t.AdjustSize(mesh_);     
     hFluct_l.AdjustSize(mesh_);     
     iteration_Tcalculated = 0;     
@@ -423,7 +446,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
-      OC_REAL8m temp = spin_[i]*total_field[i];
+      OC_REAL8m temp = spin_[i]*total_field_[i];
       if(temperature[i] != 0) {
         OC_REAL8m cell_m = Ms_[i]*Ms0_inverse[i];
         OC_REAL8m cell_msq = cell_m*cell_m;
@@ -514,9 +537,11 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 OC_BOOL
 YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
           Oxs_ConstKey<Oxs_SimState> current_state,
+          Oxs_ConstKey<Oxs_SimState> current_state1,
           Oxs_ConstKey<Oxs_SimState> current_state2,
           const Oxs_DriverStepInfo& /* step_info */,
           Oxs_Key<Oxs_SimState>& next_state,
+          Oxs_Key<Oxs_SimState>& next_state1,
           Oxs_Key<Oxs_SimState>& next_state2)
 {
   const OC_REAL8m max_step_increase = 1.25;
@@ -525,15 +550,18 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   OC_INDEX size,i; // Mesh size and indexing variable
 
   const Oxs_SimState& cstate = current_state.GetReadReference();
+  const Oxs_SimState& cstate1 = current_state1.GetReadReference();
   const Oxs_SimState& cstate2 = current_state2.GetReadReference();
   Oxs_SimState& workstate = next_state.GetWriteReference();
+  Oxs_SimState& workstate1 = next_state1.GetWriteReference();
   Oxs_SimState& workstate2 = next_state2.GetWriteReference();
   driver->FillState(cstate,workstate);
+  driver->FillState(cstate1,workstate1);
   driver->FillState(cstate2,workstate2);
 
   // Couple two sublattices through pointers
-  workstate.other = &workstate2;
-  workstate2.other = &workstate;
+  workstate.lattice1 = &workstate1;
+  workstate.lattice2 = &workstate2;
 
   if(cstate.mesh->Id() != workstate.mesh->Id()) {
     throw Oxs_Ext::Error(this,
@@ -574,16 +602,20 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   cache_good &= cstate.GetDerivedData("Timestep lower bound",
               timestep_lower_bound);
   cache_good &= (energy_state_id == cstate.Id());
-  cache_good &= (dm_dt_t_output.cache.state_id == cstate.Id());
-  cache_good &= (dm_dt_l_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_t1_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_l1_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_t2_output.cache.state_id == cstate.Id());
+  cache_good &= (dm_dt_l2_output.cache.state_id == cstate.Id());
 
   if(!cache_good) {
     throw Oxs_Ext::Error(this,
        "YY_2LatEulerEvolve::Step: Invalid data cache.");
   }
 
-  const Oxs_MeshValue<ThreeVector>& dm_dt_t = dm_dt_t_output.cache.value;
-  const Oxs_MeshValue<ThreeVector>& dm_dt_l = dm_dt_l_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_t1 = dm_dt_t1_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_l1 = dm_dt_l1_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_t2 = dm_dt_t2_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& dm_dt_l2 = dm_dt_l2_output.cache.value;
 
   // Negotiate with driver over size of next step
   OC_REAL8m stepsize = next_timestep;
@@ -606,9 +638,11 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   if(stepsize>max_timestep) stepsize = max_timestep;
 
   workstate.last_timestep=stepsize;
+  workstate1.last_timestep=stepsize;
   workstate2.last_timestep=stepsize;
   if(stepsize<timestep_lower_bound) {
     workstate.last_timestep=timestep_lower_bound;
+    workstate1.last_timestep=timestep_lower_bound;
     workstate2.last_timestep=timestep_lower_bound;
   }
 
@@ -618,10 +652,12 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     workstate.stage_start_time = cstate.stage_start_time
                                 + cstate.stage_elapsed_time;
     workstate.stage_elapsed_time = workstate.last_timestep;
+    workstate1.stage_start_time = cstate.stage_start_time
+                                + cstate.stage_elapsed_time;
+    workstate1.stage_elapsed_time = workstate1.last_timestep;
     workstate2.stage_start_time = cstate.stage_start_time
                                 + cstate.stage_elapsed_time;
     workstate2.stage_elapsed_time = workstate2.last_timestep;
-
 
     // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(workstate);
@@ -630,6 +666,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     workstate.stage_start_time = cstate.stage_start_time;
     workstate.stage_elapsed_time = cstate.stage_elapsed_time
                                   + workstate.last_timestep;
+    workstate1.stage_start_time = cstate.stage_start_time;
+    workstate1.stage_elapsed_time = cstate.stage_elapsed_time
+                                  + workstate1.last_timestep;
     workstate2.stage_start_time = cstate.stage_start_time;
     workstate2.stage_elapsed_time = cstate.stage_elapsed_time
                                   + workstate2.last_timestep;
@@ -637,6 +676,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   workstate.iteration_count = cstate.iteration_count + 1;
   workstate.stage_iteration_count = cstate.stage_iteration_count + 1;
   driver->FillStateSupplemental(workstate);
+  workstate1.iteration_count = cstate1.iteration_count + 1;
+  workstate1.stage_iteration_count = cstate1.stage_iteration_count + 1;
+  driver->FillStateSupplemental(workstate1);
   workstate2.iteration_count = cstate2.iteration_count + 1;
   workstate2.stage_iteration_count = cstate2.stage_iteration_count + 1;
   driver->FillStateSupplemental(workstate2);
@@ -651,10 +693,13 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
   // Put new spin configuration in next_state
   workstate.spin.AdjustSize(workstate.mesh); // Safety
+  workstate1.spin.AdjustSize(workstate.mesh);
   workstate2.spin.AdjustSize(workstate.mesh);
   size = workstate.spin.Size();
   Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
   Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
+  Oxs_MeshValue<OC_REAL8m>& wMs1 = *(workstate1.Ms);
+  Oxs_MeshValue<OC_REAL8m>& wMs_inverse1 = *(workstate1.Ms_inverse);
   Oxs_MeshValue<OC_REAL8m>& wMs2 = *(workstate2.Ms);
   Oxs_MeshValue<OC_REAL8m>& wMs_inverse2 = *(workstate2.Ms_inverse);
   ThreeVector tempspin;
@@ -662,7 +707,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   // Sublattice 1
   for(i=0;i<size;++i) {
     // Transverse movement
-    tempspin = dm_dt_t[i];
+    tempspin = dm_dt_t1[i];
     tempspin *= stepsize;
 
     // For improved accuracy, adjust step vector so that
@@ -670,40 +715,40 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     // v = m0 + step.  (????)
     // maybe adjusted_mo + adjusted_step is meant here??
     OC_REAL8m adj = 0.5 * tempspin.MagSq();
-    tempspin -= adj*cstate.spin[i];
+    tempspin -= adj*cstate1.spin[i];
     tempspin *= 1.0/(1.0+adj);
-    tempspin += cstate.spin[i];
+    tempspin += cstate1.spin[i];
     tempspin.MakeUnit();
-    workstate.spin[i] = tempspin;
+    workstate1.spin[i] = tempspin;
 
     // Longitudinal movement
-    tempspin = dm_dt_l[i]*stepsize;
-    tempspin += cstate.spin[i];
+    tempspin = dm_dt_l1[i]*stepsize;
+    tempspin += cstate1.spin[i];
 
     // Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
     // Notes: This changes Ms in cstate too. Watch out.
-    OC_REAL8m Ms_temp = wMs[i];
-    wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
+    OC_REAL8m Ms_temp = wMs1[i];
+    wMs1[i] = sqrt(tempspin.MagSq())*Ms_temp;
     if(wMs[i] <= 0.0) {
       // If spin overshoots to the opposite direction with stochastic kick,
       // keep Ms positive and flip spin direction.
-      wMs[i] *= -1;
-      workstate.spin[i] *= -1;
+      wMs1[i] *= -1;
+      workstate1.spin[i] *= -1;
     }
-    if(wMs[i] != 0.0) {
-      wMs_inverse[i] = 1.0/wMs[i];
+    if(wMs1[i] != 0.0) {
+      wMs_inverse1[i] = 1.0/wMs1[i];
     } else {
-      wMs_inverse[i] = 0.0;
+      wMs_inverse1[i] = 0.0;
     }
   }
-  const Oxs_SimState& nstate
-    = next_state.GetReadReference();  // Release write lock
+  const Oxs_SimState& nstate1
+    = next_state1.GetReadReference();  // Release write lock
 
   // Sublattice 2
   for(i=0;i<size;++i) {
     // Transverse movement
-    tempspin = dm_dt_t[i];
+    tempspin = dm_dt_t2[i];
     tempspin *= stepsize;
 
     // For improved accuracy, adjust step vector so that
@@ -718,7 +763,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     workstate2.spin[i] = tempspin;
 
     // Longitudinal movement
-    tempspin = dm_dt_l[i]*stepsize;
+    tempspin = dm_dt_l2[i]*stepsize;
     tempspin += cstate2.spin[i];
 
     // Update Ms in the next state.
@@ -730,7 +775,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
       // If spin overshoots to the opposite direction with stochastic kick,
       // keep Ms positive and flip spin direction.
       wMs2[i] *= -1;
-      workstate.spin[i] *= -1;
+      workstate2.spin[i] *= -1;
     }
     if(wMs2[i] != 0.0) {
       wMs_inverse2[i] = 1.0/wMs2[i];
@@ -741,21 +786,43 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   const Oxs_SimState& nstate2
     = next_state2.GetReadReference();  // Release write lock
 
+  // Total spin
+  for(i=0; i<size; i++) {
+    tempspin = wMs1[i]*workstate1.spin[i];
+    tempspin += wMs2[i]*workstate2.spin[i];
+    wMs[i] = sqrt(tempspin.MagSq());
+    tempspin.MakeUnit();
+    workstate.spin[i] = tempspin;
+    if(wMs[i] != 0.0) {
+      wMs_inverse[i] = 1.0/wMs[i];
+    } else {
+      wMs_inverse[i] = 0.0;
+    }
+  }
+  const Oxs_SimState& nstate
+    = next_state.GetReadReference();  // Release write lock
 
+  // TODO: Do this for nstate2 as well
   //  Calculate delta E
   OC_REAL8m new_pE_pt, new_pE_pt2;
-  GetEnergyDensity(nstate,new_energy,
-       &mxH_output.cache.value,
-       &total_field,
-       new_pE_pt);
-  mxH_output.cache.state_id=nstate.Id();
-  const Oxs_MeshValue<ThreeVector>& mxH = mxH_output.cache.value;
+  GetEnergyDensity(
+      nstate,
+      new_energy,
+      &mxH1_output.cache.value,
+      &mxH2_output.cache.value,
+      &total_field1,
+      &total_field2,
+      new_pE_pt);
+  mxH1_output.cache.state_id=nstate.Id();
+  mxH2_output.cache.state_id=nstate.Id();
+  const Oxs_MeshValue<ThreeVector>& mxH1 = mxH1_output.cache.value;
+  const Oxs_MeshValue<ThreeVector>& mxH2 = mxH2_output.cache.value;
 
   OC_REAL8m dE=0.0;
   OC_REAL8m var_dE=0.0;
   OC_REAL8m total_E=0.0;
   for(i=0;i<size;++i) {
-    OC_REAL8m vol = nstate.mesh->Volume(i);
+    OC_REAL8m vol = nstate1.mesh->Volume(i);
     OC_REAL8m e = energy[i];
     total_E += e * vol;
     OC_REAL8m new_e = new_energy[i];
@@ -777,12 +844,12 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
   // For sublattice 1
   Calculate_dm_dt(
-      nstate, 
-      mxH, 
-      total_field, 
+      nstate1, 
+      mxH1, 
+      total_field1, 
       new_pE_pt, 
-      new_dm_dt_t,
-      new_dm_dt_l,
+      new_dm_dt_t1,
+      new_dm_dt_l1,
       new_max_dm_dt, 
       new_dE_dt, 
       new_timestep_lower_bound);
@@ -790,8 +857,8 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   // For sublattice 2
   Calculate_dm_dt(
       nstate2,
-      mxH,
-      total_field,
+      mxH2,
+      total_field2,
       new_pE_pt2,
       new_dm_dt_t2,
       new_dm_dt_l2,
@@ -802,9 +869,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   // TODO: check sublattice 2 as well
   OC_REAL8m max_error=0;
   for(i=0;i<size;++i) { 
-    ThreeVector temp = dm_dt_t[i] + dm_dt_l[i];
-    temp -= new_dm_dt_t[i];
-    temp -= new_dm_dt_l[i];
+    ThreeVector temp = dm_dt_t1[i] + dm_dt_l1[i];
+    temp -= new_dm_dt_t1[i];
+    temp -= new_dm_dt_l1[i];
     OC_REAL8m temp_error = temp.MagSq();
     if(temp_error>max_error) max_error = temp_error;
   }
@@ -899,10 +966,14 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
        " Programming error; data cache already set.");
   }
 
-  dm_dt_t_output.cache.value.Swap(new_dm_dt_t);
-  dm_dt_l_output.cache.value.Swap(new_dm_dt_l);
-  dm_dt_t_output.cache.state_id = nstate.Id();
-  dm_dt_l_output.cache.state_id = nstate.Id();
+  dm_dt_t1_output.cache.value.Swap(new_dm_dt_t1);
+  dm_dt_l1_output.cache.value.Swap(new_dm_dt_l1);
+  dm_dt_t1_output.cache.state_id = nstate.Id();
+  dm_dt_l1_output.cache.state_id = nstate.Id();
+  dm_dt_t2_output.cache.value.Swap(new_dm_dt_t2);
+  dm_dt_l2_output.cache.value.Swap(new_dm_dt_l2);
+  dm_dt_t2_output.cache.state_id = nstate.Id();
+  dm_dt_l2_output.cache.state_id = nstate.Id();
 
   energy.Swap(new_energy);
   energy_state_id = nstate.Id();
@@ -1010,12 +1081,22 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
      !state.GetDerivedData("Delta E",delta_E_output.cache.value) ||
      !state.GetDerivedData("pE/pt",dummy_value) ||
      !state.GetDerivedData("Timestep lower bound",dummy_value) ||
-     (dm_dt_t_output.GetCacheRequestCount()>0
-      && dm_dt_t_output.cache.state_id != state.Id()) ||
-     (dm_dt_l_output.GetCacheRequestCount()>0
-      && dm_dt_l_output.cache.state_id != state.Id()) ||
-     (mxH_output.GetCacheRequestCount()>0
-      && mxH_output.cache.state_id != state.Id()) ||
+     (dm_dt_t1_output.GetCacheRequestCount()>0
+      && dm_dt_t1_output.cache.state_id != state.Id()) ||
+     (dm_dt_l1_output.GetCacheRequestCount()>0
+      && dm_dt_l1_output.cache.state_id != state.Id()) ||
+     (mxH1_output.GetCacheRequestCount()>0
+      && mxH1_output.cache.state_id != state.Id()) ||
+     (spin1_output.GetCacheRequestCount()>0
+      && spin1_output.cache.state_id != state.Id()) ||
+     (magnetization1_output.GetCacheRequestCount()>0
+      && magnetization1_output.cache.state_id != state.Id()) ||
+     (dm_dt_t2_output.GetCacheRequestCount()>0
+      && dm_dt_t2_output.cache.state_id != state.Id()) ||
+     (dm_dt_l2_output.GetCacheRequestCount()>0
+      && dm_dt_l2_output.cache.state_id != state.Id()) ||
+     (mxH2_output.GetCacheRequestCount()>0
+      && mxH2_output.cache.state_id != state.Id()) ||
      (spin2_output.GetCacheRequestCount()>0
       && spin2_output.cache.state_id != state.Id()) ||
      (magnetization2_output.GetCacheRequestCount()>0
@@ -1023,48 +1104,92 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
 
     // Missing at least some data, so calculate from scratch
 
-    // Output of second sublattice spin
+    // Output of sublattice spin
+    // Sublattice 1
+    Oxs_MeshValue<ThreeVector>& spin1 = spin1_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& magnetization1 = 
+      magnetization1_output.cache.value;
+    spin1 = state.lattice1->spin;
+    magnetization1 = state.lattice1->spin;
+    const Oxs_MeshValue<OC_REAL8m>& Ms1 = *(state.lattice1->Ms);
+    for(OC_INDEX i=0; i<state.mesh->Size(); i++) {
+      magnetization1[i] *= Ms1[i];
+    }
+    spin1_output.cache.state_id=state.Id();
+    magnetization1_output.cache.state_id=state.Id();
+
+    // Sublattice 2
     Oxs_MeshValue<ThreeVector>& spin2 = spin2_output.cache.value;
     Oxs_MeshValue<ThreeVector>& magnetization2 = 
       magnetization2_output.cache.value;
-    spin2 = state.other->spin;
-    magnetization2 = state.other->spin;
-    const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.other->Ms);
+    spin2 = state.lattice2->spin;
+    magnetization2 = state.lattice2->spin;
+    const Oxs_MeshValue<OC_REAL8m>& Ms2 = *(state.lattice2->Ms);
     for(OC_INDEX i=0; i<state.mesh->Size(); i++) {
-      magnetization2[i] *= Ms[i];
+      magnetization2[i] *= Ms2[i];
     }
     spin2_output.cache.state_id=state.Id();
     magnetization2_output.cache.state_id=state.Id();
 
     // Calculate H and mxH outputs
-    Oxs_MeshValue<ThreeVector>& mxH = mxH_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& mxH1 = mxH1_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& mxH2 = mxH2_output.cache.value;
     OC_REAL8m pE_pt;
-    GetEnergyDensity(state,energy,&mxH,&total_field,pE_pt);
+    GetEnergyDensity(
+        state,
+        energy,
+        &mxH1,
+        &mxH2,
+        &total_field1,
+        &total_field2,
+        pE_pt);
     energy_state_id=state.Id();
-    mxH_output.cache.state_id=state.Id();
+    mxH1_output.cache.state_id=state.Id();
+    mxH2_output.cache.state_id=state.Id();
+
+    // TODO: How can I include pE_pt2?
     if(!state.GetDerivedData("pE/pt",dummy_value)) {
       state.AddDerivedData("pE/pt",pE_pt);
     }
 
     // Calculate dm/dt, Max dm/dt and dE/dt
-    Oxs_MeshValue<ThreeVector>& dm_dt_t
-      = dm_dt_t_output.cache.value;
-    Oxs_MeshValue<ThreeVector>& dm_dt_l
-      = dm_dt_l_output.cache.value;
-    dm_dt_t_output.cache.state_id=0;
-    dm_dt_l_output.cache.state_id=0;
     OC_REAL8m timestep_lower_bound;
+    Oxs_MeshValue<ThreeVector>& dm_dt_t1
+      = dm_dt_t1_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& dm_dt_l1
+      = dm_dt_l1_output.cache.value;
+    dm_dt_t1_output.cache.state_id=0;
+    dm_dt_l1_output.cache.state_id=0;
     Calculate_dm_dt(
         state,
-        mxH,
-        total_field,
+        mxH1,
+        total_field1,
         pE_pt,
-        dm_dt_t,
-        dm_dt_l,
+        dm_dt_t1,
+        dm_dt_l1,
         max_dm_dt_output.cache.value,
         dE_dt_output.cache.value,timestep_lower_bound);
-    dm_dt_t_output.cache.state_id=state.Id();
-    dm_dt_l_output.cache.state_id=state.Id();
+    dm_dt_t1_output.cache.state_id=state.Id();
+    dm_dt_l1_output.cache.state_id=state.Id();
+
+    Oxs_MeshValue<ThreeVector>& dm_dt_t2
+      = dm_dt_t2_output.cache.value;
+    Oxs_MeshValue<ThreeVector>& dm_dt_l2
+      = dm_dt_l2_output.cache.value;
+    dm_dt_t2_output.cache.state_id=0;
+    dm_dt_l2_output.cache.state_id=0;
+    Calculate_dm_dt(
+        state,
+        mxH2,
+        total_field2,
+        pE_pt,
+        dm_dt_t2,
+        dm_dt_l2,
+        max_dm_dt_output.cache.value,
+        dE_dt_output.cache.value,timestep_lower_bound);
+    dm_dt_t2_output.cache.state_id=state.Id();
+    dm_dt_l2_output.cache.state_id=state.Id();
+
     if(!state.GetDerivedData("Max dm/dt",dummy_value)) {
       state.AddDerivedData("Max dm/dt",max_dm_dt_output.cache.value);
     }

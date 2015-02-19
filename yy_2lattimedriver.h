@@ -62,9 +62,11 @@ Oxs_ScalarOutput<YY_2LatTimeDriver> name##_output
   { return 0; }
   virtual OC_BOOL ChildIsStageDone(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const;
   virtual OC_BOOL ChildIsRunDone(
       const Oxs_SimState& state,
+      const Oxs_SimState& state1,
       const Oxs_SimState& state2) const;
 
 
@@ -89,6 +91,7 @@ public:
   // Generic interface
   virtual void GetInitialState(
       Oxs_ConstKey<Oxs_SimState>& state,
+      Oxs_ConstKey<Oxs_SimState>& state1,
       Oxs_ConstKey<Oxs_SimState>& state2);
 
   // Use FillState* and FillNewStageState* routines inherited from
@@ -99,16 +102,20 @@ public:
   { return 0; } // Dummy
   virtual OC_BOOL InitNewStage(
       Oxs_ConstKey<Oxs_SimState> state,
+      Oxs_ConstKey<Oxs_SimState> state1,
       Oxs_ConstKey<Oxs_SimState> state2,
       Oxs_ConstKey<Oxs_SimState> prevstate,
+      Oxs_ConstKey<Oxs_SimState> prevstate1,
       Oxs_ConstKey<Oxs_SimState> prevstate2);
 
 
   virtual  OC_BOOL
   Step(Oxs_ConstKey<Oxs_SimState> current_state,
+       Oxs_ConstKey<Oxs_SimState> current_state1,
        Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
        Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state1,
        Oxs_Key<Oxs_SimState>& next_state2);
   //Step(Oxs_ConstKey<Oxs_SimState> current_state,
   //     const YY_2LatDriverStepInfo& step_info,

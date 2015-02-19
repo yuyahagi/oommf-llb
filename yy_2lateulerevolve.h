@@ -110,10 +110,10 @@ private:
 
   // Scratch space
   Oxs_MeshValue<OC_REAL8m> new_energy;
-  Oxs_MeshValue<ThreeVector> new_dm_dt_t, new_dm_dt_t2;
-  Oxs_MeshValue<ThreeVector> new_dm_dt_l, new_dm_dt_l2;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_t1, new_dm_dt_t2;
+  Oxs_MeshValue<ThreeVector> new_dm_dt_l1, new_dm_dt_l2;
 
-  Oxs_MeshValue<ThreeVector> total_field;
+  Oxs_MeshValue<ThreeVector> total_field1, total_field2;  // For sublattices
 
   // =======================================================================
   // Support for stage-varying temperature
@@ -186,11 +186,11 @@ private:
   Oxs_ScalarOutput<YY_2LatEulerEvolve> max_dm_dt_output;
   Oxs_ScalarOutput<YY_2LatEulerEvolve> dE_dt_output;
   Oxs_ScalarOutput<YY_2LatEulerEvolve> delta_E_output;
-  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_t_output;
-  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_l_output;
-  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> mxH_output;
-  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> spin2_output;
-  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> magnetization2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_t1_output, dm_dt_t2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> dm_dt_l1_output, dm_dt_l2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> mxH1_output, mxH2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> spin1_output, spin2_output;
+  Oxs_VectorFieldOutput<YY_2LatEulerEvolve> magnetization1_output, magnetization2_output;
 
 public:
   virtual const char* ClassName() const; // ClassName() is
@@ -204,9 +204,11 @@ public:
   virtual  OC_BOOL
   Step(const YY_2LatTimeDriver* driver,
        Oxs_ConstKey<Oxs_SimState> current_state,
+       Oxs_ConstKey<Oxs_SimState> current_state1,
        Oxs_ConstKey<Oxs_SimState> current_state2,
        const Oxs_DriverStepInfo& step_info,
        Oxs_Key<Oxs_SimState>& next_state,
+       Oxs_Key<Oxs_SimState>& next_state1,
        Oxs_Key<Oxs_SimState>& next_state2);
   // Returns true if step was successful, false if
   // unable to step as requested.

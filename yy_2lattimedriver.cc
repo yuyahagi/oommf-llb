@@ -80,34 +80,38 @@ YY_2LatTimeDriver::YY_2LatTimeDriver(
   simulation_time_output.Register(director,0);
 
   // Reserve space for initial state (see GetInitialState() below)
-  director->ReserveSimulationStateRequest(2);
+  //director->ReserveSimulationStateRequest(3);
 }
 
 void YY_2LatTimeDriver::GetInitialState(
     Oxs_ConstKey<Oxs_SimState>& state,
+    Oxs_ConstKey<Oxs_SimState>& state1,
     Oxs_ConstKey<Oxs_SimState>& state2)
 {
   Oxs_Key<Oxs_SimState> tempstate;
+  Oxs_Key<Oxs_SimState> tempstate1;
   Oxs_Key<Oxs_SimState> tempstate2;
   director->GetNewSimulationState(tempstate);
-  tempstate.GetReadReference(); // Protect against overwrite
+  director->GetNewSimulationState(tempstate1);
   director->GetNewSimulationState(tempstate2);
 
-  SetStartValues(tempstate);
-  SetStartValues2(tempstate2);
+  SetStartValues(tempstate,tempstate1,tempstate2);
 
-  // Couple the two sublattices with pointers
+  // Set pointers to the sublattices
   Oxs_SimState& tempstate_ = tempstate.GetWriteReference();
+  Oxs_SimState& tempstate1_ = tempstate1.GetWriteReference();
   Oxs_SimState& tempstate2_ = tempstate2.GetWriteReference();
-  tempstate_.other = &tempstate2_;
-  tempstate2_.other = &tempstate_;
+  tempstate_.lattice1 = &tempstate1_;
+  tempstate_.lattice2 = &tempstate2_;
 
   tempstate.GetReadReference();  // Release write lock.
+  tempstate1.GetReadReference();  // Release write lock.
   tempstate2.GetReadReference();  // Release write lock.
   /// The read lock will be automatically released when the
   /// key "initial_state" is destroyed.
 
   state = tempstate;
+  state1 = tempstate1;
   state2 = tempstate2;
 
   return;
@@ -159,6 +163,7 @@ void YY_2LatTimeDriver::StageRequestCount
 OC_BOOL
 YY_2LatTimeDriver::ChildIsStageDone(
     const Oxs_SimState& state, 
+    const Oxs_SimState& state1, 
     const Oxs_SimState& state2) const
 {
   OC_UINT4m stage_index = state.stage_number;
@@ -175,7 +180,7 @@ YY_2LatTimeDriver::ChildIsStageDone(
     return 1; // Stage done
   }
 
-  // TODO: check both states
+  // TODO: check both sublattices?
   // dm_dt check
   Tcl_Interp* mif_interp = director->GetMifInterp();
   if(max_dm_dt_obj_ptr==NULL ||
@@ -212,7 +217,9 @@ YY_2LatTimeDriver::ChildIsStageDone(
 }
 
 OC_BOOL
-YY_2LatTimeDriver::ChildIsRunDone(const Oxs_SimState& /* state */,
+YY_2LatTimeDriver::ChildIsRunDone(
+    const Oxs_SimState& /* state */,
+    const Oxs_SimState& /* state1 */,
     const Oxs_SimState& /* state2 */) const
 {
   // No child-specific checks at this time...
@@ -265,9 +272,11 @@ void YY_2LatTimeDriver::FillStateSupplemental(Oxs_SimState& work_state) const
 OC_BOOL
 YY_2LatTimeDriver::Step(
     Oxs_ConstKey<Oxs_SimState> base_state,
+    Oxs_ConstKey<Oxs_SimState> base_state1,
     Oxs_ConstKey<Oxs_SimState> base_state2,
     const Oxs_DriverStepInfo& stepinfo,
     Oxs_Key<Oxs_SimState>& next_state,
+    Oxs_Key<Oxs_SimState>& next_state1,
     Oxs_Key<Oxs_SimState>& next_state2)
 { // Returns true if step was successful, false if
   // unable to step as requested.
@@ -281,17 +290,21 @@ YY_2LatTimeDriver::Step(
   return evolver.Step(
       this,
       base_state,
+      base_state1,
       base_state2,
       stepinfo,
       next_state,
+      next_state1,
       next_state2);
 }
 
 OC_BOOL
 YY_2LatTimeDriver::InitNewStage(
     Oxs_ConstKey<Oxs_SimState> state,
+    Oxs_ConstKey<Oxs_SimState> state1,
     Oxs_ConstKey<Oxs_SimState> state2,
     Oxs_ConstKey<Oxs_SimState> prevstate,
+    Oxs_ConstKey<Oxs_SimState> prevstate1,
     Oxs_ConstKey<Oxs_SimState> prevstate2)
 {
   // Put write lock on evolver in order to get a non-const
@@ -302,8 +315,9 @@ YY_2LatTimeDriver::InitNewStage(
   YY_2LatTimeEvolver& evolver = temp_key.GetWriteReference();
   // TODO: Default is NOP but check with the evolver.
   OC_BOOL result = evolver.InitNewStage(this,state,prevstate);
+  OC_BOOL result1 = evolver.InitNewStage(this,state1,prevstate1);
   OC_BOOL result2 = evolver.InitNewStage(this,state2,prevstate2);
-  return result & result2;
+  return result & result1 & result2;
   //return evolver.InitNewStage(this,state,prevstate);  // Default is NOP
 }
 
