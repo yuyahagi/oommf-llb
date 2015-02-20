@@ -84,8 +84,7 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
     KBoltzmann(1.38062e-23),
     iteration_Tcalculated(0),
     has_tempscript(0),
-    last_stage_number(0),
-    isMs0Set(0)
+    last_stage_number(0)
 {
   // Process arguments
   // For now, it works with a fixed time step but there still are min_ and
@@ -239,7 +238,6 @@ OC_BOOL YY_LLBEulerEvolve::Init()
   alpha_t0.Release(); alpha_t.Release(); alpha_l.Release();
   gamma.Release();
   Tc.Release();
-  Ms0.Release();
   energy.Release();
   total_field.Release();
   new_energy.Release();
@@ -253,8 +251,6 @@ OC_BOOL YY_LLBEulerEvolve::Init()
   next_timestep=0.;    // Dummy value
   energy_accum_count=energy_accum_count_limit; // Force cold count
   // on first pass
-
-  isMs0Set = 0;
 
   // (Re)initialize random number generator
   if(has_uniform_seed) {
@@ -290,6 +286,8 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   const OC_INDEX size = mesh_->Size(); // Assume all imports are compatible
   const Oxs_MeshValue<OC_REAL8m>& Ms_ = *(state_.Ms);
   const Oxs_MeshValue<OC_REAL8m>& Ms_inverse_ = *(state_.Ms_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& Ms0_ = *(state_.Ms0);
+  const Oxs_MeshValue<OC_REAL8m>& Ms0_inverse_ = *(state_.Ms0_inverse);
   const Oxs_MeshValue<ThreeVector>& spin_ = state_.spin;
   OC_UINT4m iteration_now = state_.iteration_count;
   ThreeVector scratch_t;
@@ -307,17 +305,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
   
   if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)) {
     // First go or mesh change detected
-    // Initialize non-temperature-dependent mesh values
-    Ms0.AdjustSize(mesh_);
-    Ms0_inverse.AdjustSize(mesh_);
-    if(!isMs0Set) {
-      for(i=0; i<size; i++) {
-        Ms0[i] = Ms_[i]; // This will be kept for the whole simulation.
-        Ms0_inverse[i] = Ms_inverse_[i];
-      }
-      isMs0Set = 1;
-    }
-
     Tc.AdjustSize(mesh_);
     J_init->FillMeshValue(mesh_,J);
     mu_init->FillMeshValue(mesh_,mu);
@@ -352,7 +339,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
     // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(state_);
-    UpdateMeshArrays(mesh_);
+    UpdateMeshArrays(state_);
   }
 
   if (use_stochastic && iteration_now > iteration_Tcalculated) {
@@ -391,7 +378,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
       if(do_precess) {
         dm_dt_t_[i]  = scratch_t;
-        dm_dt_t_[i]  *= Ms_[i]*Ms0_inverse[i];
+        dm_dt_t_[i]  *= Ms_[i]*Ms0_inverse_[i];
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       } else {
         dm_dt_t_[i].Set(0.0,0.0,0.0);
@@ -409,13 +396,13 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
       scratch_t ^= spin_[i];
       // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
-      scratch_t *= -cell_alpha_t*Ms0[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
+      scratch_t *= -cell_alpha_t*Ms0_[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
       OC_REAL8m temp = spin_[i]*total_field[i];
       if(temperature[i] != 0) {
-        OC_REAL8m cell_m = Ms_[i]*Ms0_inverse[i];
+        OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
         OC_REAL8m cell_msq = cell_m*cell_m;
         if(temperature[i] < Tc[i]) {
           temp += 0.5/chi_l[i]
@@ -424,7 +411,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
           temp += -1.0/chi_l[i]
             *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*cell_msq)*cell_m;
         }
-        temp *= cell_gamma*cell_alpha_l*Ms0[i]*Ms_inverse_[i];
+        temp *= cell_gamma*cell_alpha_l*Ms0_[i]*Ms_inverse_[i];
         scratch_l = temp*spin_[i];
         if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
           // scratch_l || spin_[i]
@@ -434,7 +421,7 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
         if(use_stochastic) {
           // Longitudinal stochastic field parallel to spin
-          dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0[i]*Ms_inverse_[i];
+          dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
         }
       }
     }
@@ -600,7 +587,7 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
 
     // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(workstate);
-    UpdateMeshArrays(workstate.mesh);
+    UpdateMeshArrays(workstate);
   } else {
     workstate.stage_start_time = cstate.stage_start_time;
     workstate.stage_elapsed_time = cstate.stage_elapsed_time
@@ -818,10 +805,13 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   return 1;  // Good step
 }   // end Step
 
-void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_Mesh* mesh)
+void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
 {
   mesh_id = 0; // Mark update in progress
+  const Oxs_Mesh* mesh = state.mesh;
   const OC_INDEX size = mesh->Size();
+  const Oxs_MeshValue<OC_REAL8m>& Ms0 = *(state.Ms0);
+  const Oxs_MeshValue<OC_REAL8m>& Ms0_inverse = *(state.Ms0_inverse);
   OC_INDEX i;
 
   // Update Tc first

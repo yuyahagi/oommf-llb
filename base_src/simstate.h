@@ -82,6 +82,10 @@ public:
   Oxs_MeshValue<OC_REAL8m>* Ms;
   Oxs_MeshValue<OC_REAL8m>* Ms_inverse; // 1/Ms
 
+  // Ms value at T = 0K, used in LLB simulations
+  Oxs_MeshValue<OC_REAL8m>* Ms0;
+  Oxs_MeshValue<OC_REAL8m>* Ms0_inverse;
+
   Oxs_MeshValue<ThreeVector> spin;
 
   void CloneHeader(Oxs_SimState& new_state) const;

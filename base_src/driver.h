@@ -59,6 +59,8 @@ private:
 
   mutable Oxs_MeshValue<OC_REAL8m> Ms;  // Saturation magnetization
   mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse;  // 1/Ms
+  mutable Oxs_MeshValue<OC_REAL8m> Ms0;  // Saturation magnetization
+  mutable Oxs_MeshValue<OC_REAL8m> Ms0_inverse;  // 1/Ms
   Oxs_OwnedPointer<Oxs_VectorField> m0; // Initial spin configuration
 
   // State-based outputs, maintained by the driver.  These are

@@ -22,6 +22,7 @@ Oxs_SimState::Oxs_SimState()
     stage_start_time(0.),stage_elapsed_time(0.),
     last_timestep(0.),
     mesh(NULL),Ms(NULL),Ms_inverse(NULL),
+    Ms0(NULL),Ms0_inverse(NULL),
     stage_done(UNKNOWN), run_done(UNKNOWN)
 {}
 
@@ -53,6 +54,8 @@ void Oxs_SimState::Reset()
   mesh=NULL;
   Ms=NULL;
   Ms_inverse=NULL;
+  Ms0=NULL;
+  Ms0_inverse=NULL;
 
   stage_done=UNKNOWN;
   run_done=UNKNOWN;
@@ -125,6 +128,8 @@ void Oxs_SimState::CloneHeader(Oxs_SimState& new_state) const
   new_state.mesh                  = mesh;
   new_state.Ms                    = Ms;
   new_state.Ms_inverse            = Ms_inverse;
+  new_state.Ms0                   = Ms0;  // Ms at T = 0K, used in LLB simulations
+  new_state.Ms0_inverse           = Ms0_inverse;
   new_state.spin.AdjustSize(mesh);
   new_state.ClearDerivedData();
 }

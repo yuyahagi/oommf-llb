@@ -166,7 +166,9 @@ Oxs_Driver::Oxs_Driver
   OXS_GET_INIT_EXT_OBJECT("m0",Oxs_VectorField,m0);
 
   // Fill Ms and Ms_inverse array, and verify that Ms is non-negative.
+  Msinit->FillMeshValue(mesh_obj.GetPtr(),Ms0);
   Msinit->FillMeshValue(mesh_obj.GetPtr(),Ms);
+  Ms0_inverse.AdjustSize(mesh_obj.GetPtr());
   Ms_inverse.AdjustSize(mesh_obj.GetPtr());
   for(OC_INDEX icell=0;icell<mesh_obj->Size();icell++) {
     if(Ms[icell]<0.0) {
@@ -176,8 +178,10 @@ Oxs_Driver::Oxs_Driver
                   static_cast<double>(Ms[icell]),icell);
       throw Oxs_ExtError(this,String(buf));
     } else if(Ms[icell]==0.0) {
+      Ms0_inverse[icell]=0.0; // Special case handling
       Ms_inverse[icell]=0.0; // Special case handling
     } else {
+      Ms0_inverse[icell]=1.0/Ms0[icell];
       Ms_inverse[icell]=1.0/Ms[icell];
     }
   }
@@ -627,10 +631,10 @@ void Oxs_Driver::SetStartValues (Oxs_Key<Oxs_SimState>& initial_state) const
     istate.last_timestep         = start_last_timestep;
     istate.mesh = mesh_key.GetPtr();
 
+    istate.Ms0 = &Ms0;
+    istate.Ms0_inverse = &Ms0_inverse;
     istate.Ms = &Ms;
     istate.Ms_inverse = &Ms_inverse;
-    Ms = static_cast<const Oxs_MeshValue<OC_REAL8m>&>(Ms);
-    Ms_inverse = Ms_inverse;
     m0->FillMeshValue(istate.mesh,istate.spin);
     // Insure that all spins are unit vectors
     OC_INDEX size = istate.spin.Size();
