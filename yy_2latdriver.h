@@ -53,6 +53,11 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse1, Ms_inverse2;  // 1/Ms
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
 
+  // Additional outputs for sublattices
+  Oxs_ScalarOutput<YY_2LatDriver> aveMx1_output, aveMx2_output;
+  Oxs_ScalarOutput<YY_2LatDriver> aveMy1_output, aveMy2_output;
+  Oxs_ScalarOutput<YY_2LatDriver> aveMz1_output, aveMz2_output;
+  void Fill__aveMsub_output(const Oxs_SimState&);
   // Override output function for average M
   void Fill__aveM_output(const Oxs_SimState&);
 

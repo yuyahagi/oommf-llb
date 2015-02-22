@@ -93,6 +93,41 @@ YY_2LatDriver::YY_2LatDriver
     }
   }
 
+  // Setup additional outputs for sublattices
+  if(normalize_aveM) {
+    aveMx1_output.Setup(this,InstanceName(),"mx1","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMy1_output.Setup(this,InstanceName(),"my1","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMz1_output.Setup(this,InstanceName(),"mz1","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMx2_output.Setup(this,InstanceName(),"mx2","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMy2_output.Setup(this,InstanceName(),"my2","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMz2_output.Setup(this,InstanceName(),"mz2","",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+  } else {
+    aveMx1_output.Setup(this,InstanceName(),"Mx1","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMy1_output.Setup(this,InstanceName(),"My1","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMz1_output.Setup(this,InstanceName(),"Mz1","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMx2_output.Setup(this,InstanceName(),"Mx2","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMy2_output.Setup(this,InstanceName(),"My2","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+    aveMz2_output.Setup(this,InstanceName(),"Mz2","A/m",1,
+                       &YY_2LatDriver::Fill__aveMsub_output);
+  }
+
+  aveMx1_output.Register(director,0);
+  aveMx2_output.Register(director,0);
+  aveMy1_output.Register(director,0);
+  aveMy2_output.Register(director,0);
+  aveMz1_output.Register(director,0);
+  aveMz2_output.Register(director,0);
 }
 
 //Destructor
@@ -798,6 +833,165 @@ void YY_2LatDriver::Fill__aveM_output(const Oxs_SimState& state)
       }
       aveMz_output.cache.value=Mz*scaling;
       aveMz_output.cache.state_id=state.Id();
+    }
+  }
+}
+
+void YY_2LatDriver::Fill__aveMsub_output(const Oxs_SimState& state)
+{
+#ifndef NDEBUG
+  if(!state.mesh->HasUniformCellVolumes()) {
+    throw Oxs_ExtError(this,"NEW CODE REQUIRED: Current Oxs_Driver"
+                         " aveM and projection outputs require meshes "
+                         " with uniform cell sizes, such as "
+                         "Oxs_RectangularMesh.");
+  }
+#endif
+  const Oxs_MeshValue<ThreeVector>& spin1 = state.lattice1->spin;
+  const Oxs_MeshValue<ThreeVector>& spin2 = state.lattice2->spin;
+  const Oxs_MeshValue<OC_REAL8m>& sMs1 = *(state.lattice1->Ms);
+  const Oxs_MeshValue<OC_REAL8m>& sMs2 = *(state.lattice2->Ms);
+  OC_INDEX size = state.mesh->Size();
+
+  OC_REAL8m scaling1, scaling2;
+  if(aveMx1_output.GetCacheRequestCount()>0 &&
+     aveMx2_output.GetCacheRequestCount()>0 &&
+     aveMy1_output.GetCacheRequestCount()>0 &&
+     aveMy2_output.GetCacheRequestCount()>0 &&
+     aveMz1_output.GetCacheRequestCount()>0 &&
+     aveMz2_output.GetCacheRequestCount()>0) {
+    // Preferred case: All three components desired
+    // This does not appear to be the usual case, however...
+    aveMx1_output.cache.state_id=0;
+    aveMx2_output.cache.state_id=0;
+    aveMy1_output.cache.state_id=0;
+    aveMy2_output.cache.state_id=0;
+    aveMz1_output.cache.state_id=0;
+    aveMz2_output.cache.state_id=0;
+    OC_REAL8m Mx1=0.0, Mx2=0.0;
+    OC_REAL8m My1=0.0, My2=0.0;
+    OC_REAL8m Mz1=0.0, Mz2=0.0;
+
+    // Adjust scaling factor
+    if(normalize_aveM) {
+      OC_REAL8m sum1 = 0.0, sum2 = 0.0;
+      for(OC_INDEX i=0; i<size; i++) {
+        sum1 += fabs(sMs1[i]);
+        sum2 += fabs(sMs2[i]);
+      }
+      if(sum1>0.0) scaling1 = 1.0/sum1;
+      else         scaling1 = 1.0; // Safety
+      if(sum2>0.0) scaling2 = 1.0/sum2;
+      else         scaling2 = 1.0; // Safety
+    } else {
+      if(size>0) {
+        scaling1 = 1.0/size; scaling2 = 1.0/size;
+      } else {
+        scaling1 = 1.0; scaling2 = 1.0; // Safety
+      }
+    }
+
+    for(OC_INDEX i=0;i<size;++i) {
+      OC_REAL8m sat_mag1 = sMs1[i];
+      OC_REAL8m sat_mag2 = sMs2[i];
+      Mx1 += sat_mag1*(spin1[i].x);
+      Mx2 += sat_mag2*(spin2[i].x);
+      My1 += sat_mag1*(spin1[i].y);
+      My2 += sat_mag2*(spin2[i].y);
+      Mz1 += sat_mag1*(spin1[i].z);
+      Mz2 += sat_mag2*(spin2[i].z);
+    }
+    aveMx1_output.cache.value=Mx1*scaling1;
+    aveMx2_output.cache.value=Mx2*scaling2;
+    aveMy1_output.cache.value=My1*scaling1;
+    aveMy2_output.cache.value=My2*scaling2;
+    aveMz1_output.cache.value=Mz1*scaling1;
+    aveMz2_output.cache.value=Mz2*scaling2;
+    aveMx1_output.cache.state_id=state.Id();
+    aveMx2_output.cache.state_id=state.Id();
+    aveMy1_output.cache.state_id=state.Id();
+    aveMy2_output.cache.state_id=state.Id();
+    aveMz1_output.cache.state_id=state.Id();
+    aveMz2_output.cache.state_id=state.Id();
+  } else {
+    // Adjust scaling factor
+    if(normalize_aveM) {
+      OC_REAL8m sum1 = 0.0, sum2 = 0.0;
+      for(OC_INDEX i=0; i<size; i++) {
+        sum1 += fabs(sMs1[i]);
+        sum2 += fabs(sMs2[i]);
+      }
+      if(sum1>0.0) scaling1 = 1.0/sum1;
+      else         scaling1 = 1.0; // Safety
+      if(sum2>0.0) scaling2 = 1.0/sum2;
+      else         scaling2 = 1.0; // Safety
+    } else {
+      if(size>0) {
+        scaling1 = 1.0/size; scaling2 = 1.0/size;
+      } else {
+        scaling1 = 1.0; scaling2 = 1.0; // Safety
+      }
+    }
+
+    // Calculate components on a case-by-case basis
+    if(aveMx1_output.GetCacheRequestCount()>0) {
+      aveMx1_output.cache.state_id=0;
+      OC_REAL8m Mx1=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mx1 += sMs1[i]*(spin1[i].x);
+      }
+      aveMx1_output.cache.value=Mx1*scaling1;
+      aveMx1_output.cache.state_id=state.Id();
+    }
+
+    if(aveMy1_output.GetCacheRequestCount()>0) {
+      aveMy1_output.cache.state_id=0;
+      OC_REAL8m My1=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        My1 += sMs1[i]*(spin1[i].y);
+      }
+      aveMy1_output.cache.value=My1*scaling1;
+      aveMy1_output.cache.state_id=state.Id();
+    }
+
+    if(aveMz1_output.GetCacheRequestCount()>0) {
+      aveMz1_output.cache.state_id=0;
+      OC_REAL8m Mz1=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mz1 += sMs1[i]*(spin1[i].z);
+      }
+      aveMz1_output.cache.value=Mz1*scaling1;
+      aveMz1_output.cache.state_id=state.Id();
+    }
+
+    if(aveMx2_output.GetCacheRequestCount()>0) {
+      aveMx2_output.cache.state_id=0;
+      OC_REAL8m Mx2=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mx2 += sMs2[i]*(spin2[i].x);
+      }
+      aveMx2_output.cache.value=Mx2*scaling2;
+      aveMx2_output.cache.state_id=state.Id();
+    }
+
+    if(aveMy2_output.GetCacheRequestCount()>0) {
+      aveMy2_output.cache.state_id=0;
+      OC_REAL8m My2=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        My2 += sMs2[i]*(spin2[i].y);
+      }
+      aveMy2_output.cache.value=My2*scaling2;
+      aveMy2_output.cache.state_id=state.Id();
+    }
+
+    if(aveMz2_output.GetCacheRequestCount()>0) {
+      aveMz2_output.cache.state_id=0;
+      OC_REAL8m Mz2=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mz2 += sMs2[i]*(spin2[i].z);
+      }
+      aveMz2_output.cache.value=Mz2*scaling2;
+      aveMz2_output.cache.state_id=state.Id();
     }
   }
 }
