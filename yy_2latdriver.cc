@@ -707,4 +707,99 @@ void YY_2LatDriver::UpdateSpinAngleData(
   state.AddDerivedData("Run Max Spin Ang",run_maxang);
 }
 
+void YY_2LatDriver::Fill__aveM_output(const Oxs_SimState& state)
+{
+#ifndef NDEBUG
+  if(!state.mesh->HasUniformCellVolumes()) {
+    throw Oxs_ExtError(this,"NEW CODE REQUIRED: Current Oxs_Driver"
+                         " aveM and projection outputs require meshes "
+                         " with uniform cell sizes, such as "
+                         "Oxs_RectangularMesh.");
+  }
+#endif
+  const Oxs_MeshValue<ThreeVector>& spin = state.spin;
+  const Oxs_MeshValue<OC_REAL8m>& sMs = *(state.Ms);
+  OC_INDEX size = state.mesh->Size();
+
+  OC_REAL8m scaling;  // To replace constant scaling_aveM;
+  if(aveMx_output.GetCacheRequestCount()>0 &&
+     aveMy_output.GetCacheRequestCount()>0 &&
+     aveMz_output.GetCacheRequestCount()>0) {
+    // Preferred case: All three components desired
+    // This does not appear to be the usual case, however...
+    aveMx_output.cache.state_id=0;
+    aveMy_output.cache.state_id=0;
+    aveMz_output.cache.state_id=0;
+    OC_REAL8m Mx=0.0;
+    OC_REAL8m My=0.0;
+    OC_REAL8m Mz=0.0;
+
+    // Adjust scaling factor
+    if(normalize_aveM) {
+      OC_REAL8m sum = 0.0;
+      for(OC_INDEX i=0; i<size; i++) sum += fabs(sMs[i]);
+      if(sum>0.0) scaling = 1.0/sum;
+      else        scaling = 1.0; // Safety
+    } else {
+      if(size>0)  scaling = 1.0/size;
+      else        scaling = 1.0; // Safety
+    }
+
+    for(OC_INDEX i=0;i<size;++i) {
+      OC_REAL8m sat_mag = sMs[i];
+      Mx += sat_mag*(spin[i].x);
+      My += sat_mag*(spin[i].y);
+      Mz += sat_mag*(spin[i].z);
+    }
+    aveMx_output.cache.value=Mx*scaling;
+    aveMx_output.cache.state_id=state.Id();
+    aveMy_output.cache.value=My*scaling;
+    aveMy_output.cache.state_id=state.Id();
+    aveMz_output.cache.value=Mz*scaling;
+    aveMz_output.cache.state_id=state.Id();
+  } else {
+    // Adjust scaling factor
+    if(normalize_aveM) {
+      OC_REAL8m sum = 0.0;
+      for(OC_INDEX i=0; i<size; i++) sum += fabs(sMs[i]);
+      if(sum>0.0) scaling = 1.0/sum;
+      else        scaling = 1.0; // Safety
+    } else {
+      if(size>0) scaling = 1.0/size;
+      else            scaling = 1.0; // Safety
+    }
+
+    // Calculate components on a case-by-case basis
+    if(aveMx_output.GetCacheRequestCount()>0) {
+      aveMx_output.cache.state_id=0;
+      OC_REAL8m Mx=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mx += sMs[i]*(spin[i].x);
+      }
+      aveMx_output.cache.value=Mx*scaling;
+      aveMx_output.cache.state_id=state.Id();
+    }
+
+    if(aveMy_output.GetCacheRequestCount()>0) {
+      aveMy_output.cache.state_id=0;
+      OC_REAL8m My=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        My += sMs[i]*(spin[i].y);
+      }
+      aveMy_output.cache.value=My*scaling;
+      aveMy_output.cache.state_id=state.Id();
+    }
+
+    if(aveMz_output.GetCacheRequestCount()>0) {
+      aveMz_output.cache.state_id=0;
+      OC_REAL8m Mz=0.0;
+      for(OC_INDEX i=0;i<size;++i) {
+        Mz += sMs[i]*(spin[i].z);
+      }
+      aveMz_output.cache.value=Mz*scaling;
+      aveMz_output.cache.state_id=state.Id();
+    }
+  }
+}
+
 #undef YY_DEBUG

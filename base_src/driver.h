@@ -80,7 +80,9 @@ Oxs_ScalarOutput<Oxs_Driver> name##_output
   Oxs_ScalarOutput<Oxs_Driver> aveMx_output;
   Oxs_ScalarOutput<Oxs_Driver> aveMy_output;
   Oxs_ScalarOutput<Oxs_Driver> aveMz_output;
-  void Fill__aveM_output(const Oxs_SimState&);
+  virtual void Fill__aveM_output(const Oxs_SimState&);
+  // For 2 lattice simulations, Fill__aveM_output() should be overridden in
+  // order to handle the time-varying scaling_aveM prorperly.
 
   struct OxsDriverProjectionOutput {
   public:

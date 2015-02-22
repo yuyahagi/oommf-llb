@@ -53,6 +53,9 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse1, Ms_inverse2;  // 1/Ms
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
 
+  // Override output function for average M
+  void Fill__aveM_output(const Oxs_SimState&);
+
   void UpdateSpinAngleData(
       const Oxs_SimState& state,
       const Oxs_SimState& state1,
