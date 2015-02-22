@@ -1161,7 +1161,7 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
     dm_dt_t1_output.cache.state_id=0;
     dm_dt_l1_output.cache.state_id=0;
     Calculate_dm_dt(
-        state,
+        *(state.lattice1),
         mxH1,
         total_field1,
         pE_pt,
@@ -1179,7 +1179,7 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
     dm_dt_t2_output.cache.state_id=0;
     dm_dt_l2_output.cache.state_id=0;
     Calculate_dm_dt(
-        state,
+        *(state.lattice2),
         mxH2,
         total_field2,
         pE_pt,
