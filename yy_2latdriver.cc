@@ -94,6 +94,15 @@ YY_2LatDriver::YY_2LatDriver
   }
 
   // Setup additional outputs for sublattices
+  spin1_output.Setup(this,InstanceName(),"spin1","",1,
+                    &YY_2LatDriver::Fill__spin1_output);
+  magnetization1_output.Setup(this,InstanceName(),"Magnetization1","A/m",1,
+                             &YY_2LatDriver::Fill__magnetization1_output);
+  spin2_output.Setup(this,InstanceName(),"spin2","",1,
+                    &YY_2LatDriver::Fill__spin2_output);
+  magnetization2_output.Setup(this,InstanceName(),"Magnetization2","A/m",1,
+                             &YY_2LatDriver::Fill__magnetization2_output);
+
   if(normalize_aveM) {
     aveMx1_output.Setup(this,InstanceName(),"mx1","",1,
                        &YY_2LatDriver::Fill__aveMsub_output);
@@ -122,6 +131,10 @@ YY_2LatDriver::YY_2LatDriver
                        &YY_2LatDriver::Fill__aveMsub_output);
   }
 
+  spin1_output.Register(director,0);
+  magnetization1_output.Register(director,0);
+  spin2_output.Register(director,0);
+  magnetization2_output.Register(director,0);
   aveMx1_output.Register(director,0);
   aveMx2_output.Register(director,0);
   aveMy1_output.Register(director,0);
@@ -741,6 +754,55 @@ void YY_2LatDriver::UpdateSpinAngleData(
   state.AddDerivedData("Stage Max Spin Ang",stage_maxang);
   state.AddDerivedData("Run Max Spin Ang",run_maxang);
 }
+
+void YY_2LatDriver::Fill__spin1_output(const Oxs_SimState& state)
+{
+  const Oxs_SimState& state1 = *(state.lattice1);
+  spin1_output.cache.state_id=0;
+  spin1_output.cache.value = state1.spin;
+  spin1_output.cache.state_id=state.Id();
+}
+
+void YY_2LatDriver::Fill__spin2_output(const Oxs_SimState& state)
+{
+  const Oxs_SimState& state2 = *(state.lattice2);
+  spin2_output.cache.state_id=0;
+  spin2_output.cache.value = state2.spin;
+  spin2_output.cache.state_id=state.Id();
+}
+
+void YY_2LatDriver::Fill__magnetization1_output(const Oxs_SimState& state)
+{
+  const Oxs_SimState& state1 = *(state.lattice1);
+  magnetization1_output.cache.state_id=0;
+  magnetization1_output.cache.value.AdjustSize(state1.mesh);
+  OC_INDEX size=state.mesh->Size();
+  const Oxs_MeshValue<ThreeVector>& spin = state1.spin;
+  const Oxs_MeshValue<OC_REAL8m>& sMs = *(state1.Ms);
+  Oxs_MeshValue<ThreeVector>& mag = magnetization1_output.cache.value;
+  for(OC_INDEX i=0;i<size;i++) {
+    mag[i] = spin[i];
+    mag[i] *= sMs[i];
+  }
+  magnetization1_output.cache.state_id=state.Id();
+}
+
+void YY_2LatDriver::Fill__magnetization2_output(const Oxs_SimState& state)
+{
+  const Oxs_SimState& state2 = *(state.lattice2);
+  magnetization2_output.cache.state_id=0;
+  magnetization2_output.cache.value.AdjustSize(state2.mesh);
+  OC_INDEX size=state.mesh->Size();
+  const Oxs_MeshValue<ThreeVector>& spin = state2.spin;
+  const Oxs_MeshValue<OC_REAL8m>& sMs = *(state2.Ms);
+  Oxs_MeshValue<ThreeVector>& mag = magnetization2_output.cache.value;
+  for(OC_INDEX i=0;i<size;i++) {
+    mag[i] = spin[i];
+    mag[i] *= sMs[i];
+  }
+  magnetization2_output.cache.state_id=state.Id();
+}
+
 
 void YY_2LatDriver::Fill__aveM_output(const Oxs_SimState& state)
 {

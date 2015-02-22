@@ -216,20 +216,12 @@ YY_2LatEulerEvolve::YY_2LatEulerEvolve(
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   mxH1_output.Setup(this,InstanceName(),"mxH1","A/m",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  spin1_output.Setup(this,InstanceName(),"spin1","",1,
-      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  magnetization1_output.Setup(this,InstanceName(),"Magnetization1","A/m",1,
-      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   dm_dt_t2_output.Setup(this,InstanceName(),"dm/dt (trans.)2","rad/s",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   dm_dt_l2_output.Setup(this,InstanceName(),"dm/dt (long.)2","rad/s",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
   mxH2_output.Setup(this,InstanceName(),"mxH2","A/m",1,
      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  spin2_output.Setup(this,InstanceName(),"spin2","",1,
-      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
-  magnetization2_output.Setup(this,InstanceName(),"Magnetization2","A/m",1,
-      &YY_2LatEulerEvolve::UpdateDerivedOutputs);
 
   VerifyAllInitArgsUsed();
 }   // end Constructor
@@ -243,26 +235,18 @@ OC_BOOL YY_2LatEulerEvolve::Init()
   dm_dt_t1_output.Register(director,-5);
   dm_dt_l1_output.Register(director,-5);
   mxH1_output.Register(director,-5);
-  spin1_output.Register(director,-5);
-  magnetization1_output.Register(director,-5);
   dm_dt_t2_output.Register(director,-5);
   dm_dt_l2_output.Register(director,-5);
   mxH2_output.Register(director,-5);
-  spin2_output.Register(director,-5);
-  magnetization2_output.Register(director,-5);
 
   // dm_dt and mxH output caches are used for intermediate storage,
   // so enable caching.
   dm_dt_t1_output.CacheRequestIncrement(1);
   dm_dt_l1_output.CacheRequestIncrement(1);
   mxH1_output.CacheRequestIncrement(1);
-  spin1_output.CacheRequestIncrement(1);
-  magnetization1_output.CacheRequestIncrement(1);
   dm_dt_t2_output.CacheRequestIncrement(1);
   dm_dt_l2_output.CacheRequestIncrement(1);
   mxH2_output.CacheRequestIncrement(1);
-  spin2_output.CacheRequestIncrement(1);
-  magnetization2_output.CacheRequestIncrement(1);
 
   alpha_t0.Release(); alpha_t.Release(); alpha_l.Release();
   gamma.Release();
@@ -1087,49 +1071,14 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
       && dm_dt_l1_output.cache.state_id != state.Id()) ||
      (mxH1_output.GetCacheRequestCount()>0
       && mxH1_output.cache.state_id != state.Id()) ||
-     (spin1_output.GetCacheRequestCount()>0
-      && spin1_output.cache.state_id != state.Id()) ||
-     (magnetization1_output.GetCacheRequestCount()>0
-      && magnetization1_output.cache.state_id != state.Id()) ||
      (dm_dt_t2_output.GetCacheRequestCount()>0
       && dm_dt_t2_output.cache.state_id != state.Id()) ||
      (dm_dt_l2_output.GetCacheRequestCount()>0
       && dm_dt_l2_output.cache.state_id != state.Id()) ||
      (mxH2_output.GetCacheRequestCount()>0
-      && mxH2_output.cache.state_id != state.Id()) ||
-     (spin2_output.GetCacheRequestCount()>0
-      && spin2_output.cache.state_id != state.Id()) ||
-     (magnetization2_output.GetCacheRequestCount()>0
-      && magnetization2_output.cache.state_id != state.Id()) ) {
+      && mxH2_output.cache.state_id != state.Id()) ) {
 
     // Missing at least some data, so calculate from scratch
-
-    // Output of sublattice spin
-    // Sublattice 1
-    Oxs_MeshValue<ThreeVector>& spin1 = spin1_output.cache.value;
-    Oxs_MeshValue<ThreeVector>& magnetization1 = 
-      magnetization1_output.cache.value;
-    spin1 = state.lattice1->spin;
-    magnetization1 = state.lattice1->spin;
-    const Oxs_MeshValue<OC_REAL8m>& Ms1 = *(state.lattice1->Ms);
-    for(OC_INDEX i=0; i<state.mesh->Size(); i++) {
-      magnetization1[i] *= Ms1[i];
-    }
-    spin1_output.cache.state_id=state.Id();
-    magnetization1_output.cache.state_id=state.Id();
-
-    // Sublattice 2
-    Oxs_MeshValue<ThreeVector>& spin2 = spin2_output.cache.value;
-    Oxs_MeshValue<ThreeVector>& magnetization2 = 
-      magnetization2_output.cache.value;
-    spin2 = state.lattice2->spin;
-    magnetization2 = state.lattice2->spin;
-    const Oxs_MeshValue<OC_REAL8m>& Ms2 = *(state.lattice2->Ms);
-    for(OC_INDEX i=0; i<state.mesh->Size(); i++) {
-      magnetization2[i] *= Ms2[i];
-    }
-    spin2_output.cache.state_id=state.Id();
-    magnetization2_output.cache.state_id=state.Id();
 
     // Calculate H and mxH outputs
     Oxs_MeshValue<ThreeVector>& mxH1 = mxH1_output.cache.value;

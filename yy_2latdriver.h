@@ -54,6 +54,14 @@ private:
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
 
   // Additional outputs for sublattices
+  Oxs_VectorFieldOutput<YY_2LatDriver> spin1_output;
+  Oxs_VectorFieldOutput<YY_2LatDriver> spin2_output;
+  void Fill__spin1_output(const Oxs_SimState&);
+  void Fill__spin2_output(const Oxs_SimState&);
+  Oxs_VectorFieldOutput<YY_2LatDriver> magnetization1_output;
+  Oxs_VectorFieldOutput<YY_2LatDriver> magnetization2_output;
+  void Fill__magnetization1_output(const Oxs_SimState&);
+  void Fill__magnetization2_output(const Oxs_SimState&);
   Oxs_ScalarOutput<YY_2LatDriver> aveMx1_output, aveMx2_output;
   Oxs_ScalarOutput<YY_2LatDriver> aveMy1_output, aveMy2_output;
   Oxs_ScalarOutput<YY_2LatDriver> aveMz1_output, aveMz2_output;
