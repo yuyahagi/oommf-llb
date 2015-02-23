@@ -17,19 +17,19 @@ Destination mmDisp3 mmDisp
 Schedule DataTable mmDataTable Step 1
 Schedule DataTable mmGraph Step 1
 Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 1
-Schedule YY_2LatEulerEvolve:evolver:Magnetization1 mmDisp2 Step 1
-Schedule YY_2LatEulerEvolve:evolver:Magnetization2 mmDisp3 Step 1
+Schedule YY_2LatTimeDriver::Magnetization1 mmDisp2 Step 1
+Schedule YY_2LatTimeDriver::Magnetization2 mmDisp3 Step 1
 #Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
 
 
 Specify Oxs_BoxAtlas:atlas {
   xrange {0 1e-7}
   yrange {0 1e-7}
-  zrange {0 5e-9}
+  zrange {0 10e-9}
 }
 
 Specify Oxs_RectangularMesh:mesh {
-  cellsize {4e-9 4e-9 5e-9}
+  cellsize {10e-9 10e-9 10e-9}
   atlas :atlas
 }
 
@@ -103,5 +103,6 @@ Specify YY_2LatTimeDriver {
   m01 :m0
   Ms2 :Ms2
   m02 :m02
+  normalize_aveM_output 0
 }
 

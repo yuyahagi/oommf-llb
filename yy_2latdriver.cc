@@ -55,17 +55,21 @@ YY_2LatDriver::YY_2LatDriver
   // Parent Oxs_Driver requests 2 states, making 6 in total
   director->ReserveSimulationStateRequest(4);
 
-  Oxs_OwnedPointer<Oxs_ScalarField> Msinit1, Msinit2;
-  OXS_GET_INIT_EXT_OBJECT("Ms1",Oxs_ScalarField,Msinit1);
-  OXS_GET_INIT_EXT_OBJECT("Ms2",Oxs_ScalarField,Msinit2);
+  // Fill Ms and Ms_inverse array for sublattices
+  Oxs_OwnedPointer<Oxs_ScalarField> Ms1init, Ms2init;
+  OXS_GET_INIT_EXT_OBJECT("Ms1",Oxs_ScalarField,Ms1init);
+  OXS_GET_INIT_EXT_OBJECT("Ms2",Oxs_ScalarField,Ms2init);
   OXS_GET_INIT_EXT_OBJECT("m01",Oxs_VectorField,m01);
   OXS_GET_INIT_EXT_OBJECT("m02",Oxs_VectorField,m02);
 
-  // Fill Ms and Ms_inverse array for sublattices
-  Msinit1->FillMeshValue(mesh_obj.GetPtr(),Ms1);
-  Msinit2->FillMeshValue(mesh_obj.GetPtr(),Ms2);
-  Ms_inverse1.AdjustSize(mesh_obj.GetPtr());
-  Ms_inverse2.AdjustSize(mesh_obj.GetPtr());
+  Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms1);
+  Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms01);
+  Ms2init->FillMeshValue(mesh_obj.GetPtr(),Ms2);
+  Ms2init->FillMeshValue(mesh_obj.GetPtr(),Ms02);
+  Ms1_inverse.AdjustSize(mesh_obj.GetPtr());
+  Ms01_inverse.AdjustSize(mesh_obj.GetPtr());
+  Ms2_inverse.AdjustSize(mesh_obj.GetPtr());
+  Ms02_inverse.AdjustSize(mesh_obj.GetPtr());
 
   for(OC_INDEX icell=0;icell<mesh_obj->Size();icell++) {
     if(Ms1[icell]<0.0) {
@@ -75,9 +79,11 @@ YY_2LatDriver::YY_2LatDriver
                   static_cast<double>(Ms1[icell]),icell);
       throw Oxs_ExtError(this,String(buf));
     } else if(Ms1[icell]==0.0) {
-      Ms_inverse1[icell]=0.0; // Special case handling
+      Ms1_inverse[icell]=0.0; // Special case handling
+      Ms01_inverse[icell]=0.0;
     } else {
-      Ms_inverse1[icell]=1.0/Ms1[icell];
+      Ms1_inverse[icell]=1.0/Ms1[icell];
+      Ms01_inverse[icell]=1.0/Ms01[icell];
     }
 
     if(Ms2[icell]<0.0) {
@@ -87,9 +93,11 @@ YY_2LatDriver::YY_2LatDriver
                   static_cast<double>(Ms2[icell]),icell);
       throw Oxs_ExtError(this,String(buf));
     } else if(Ms2[icell]==0.0) {
-      Ms_inverse2[icell]=0.0; // Special case handling
+      Ms2_inverse[icell]=0.0; // Special case handling
+      Ms02_inverse[icell]=0.0;
     } else {
-      Ms_inverse2[icell]=1.0/Ms2[icell];
+      Ms2_inverse[icell]=1.0/Ms2[icell];
+      Ms02_inverse[icell]=1.0/Ms02[icell];
     }
   }
 
@@ -191,13 +199,19 @@ void YY_2LatDriver::SetStartValues(
     istate2.mesh = mesh_key.GetPtr();
 
     istate.Ms = &Ms;
+    istate.Ms0 = &Ms;
     istate.Ms_inverse = &Ms_inverse;
+    istate.Ms0_inverse = &Ms0_inverse;
     m0->FillMeshValue(istate.mesh,istate.spin);
     istate1.Ms = &Ms1;
-    istate1.Ms_inverse = &Ms_inverse1;
+    istate1.Ms0 = &Ms01;
+    istate1.Ms_inverse = &Ms1_inverse;
+    istate1.Ms0_inverse = &Ms01_inverse;
     m01->FillMeshValue(istate1.mesh,istate1.spin);
     istate2.Ms = &Ms2;
-    istate2.Ms_inverse = &Ms_inverse2;
+    istate2.Ms0 = &Ms02;
+    istate2.Ms_inverse = &Ms2_inverse;
+    istate2.Ms0_inverse = &Ms02_inverse;
     m02->FillMeshValue(istate2.mesh,istate2.spin);
 
     // Insure that spins are unit vectors
@@ -210,13 +224,16 @@ void YY_2LatDriver::SetStartValues(
     // istate stores total magnetization
     ThreeVector tempspin;
     Oxs_MeshValue<OC_REAL8m>& Ms_ = *(istate.Ms);
+    Oxs_MeshValue<OC_REAL8m>& Ms0_ = *(istate.Ms0);
     Oxs_MeshValue<OC_REAL8m>& Ms_inverse_ = *(istate.Ms_inverse);
+    Oxs_MeshValue<OC_REAL8m>& Ms0_inverse_ = *(istate.Ms0_inverse);
     const Oxs_MeshValue<OC_REAL8m>& Ms1_ = *(istate1.Ms);
     const Oxs_MeshValue<OC_REAL8m>& Ms2_ = *(istate2.Ms);
     for(OC_INDEX i=0; i<size; i++) {
       tempspin = Ms1_[i]*istate1.spin[i];
       tempspin += Ms2_[i]*istate2.spin[i];
       Ms_[i] = sqrt(tempspin.MagSq());
+      Ms0_[i] = Ms_[i];
       tempspin.MakeUnit();
       istate.spin[i] = tempspin;
       if(Ms_[i] != 0.0) {
@@ -224,6 +241,7 @@ void YY_2LatDriver::SetStartValues(
       } else {
         Ms_inverse_[i] = 0.0;
       }
+      Ms0_inverse_[i] = 0.0;
     }
 
     initial_state.GetReadReference();

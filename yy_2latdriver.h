@@ -33,6 +33,7 @@
 #include "simstate.h"
 #include "key.h"
 #include "outputderiv.h"
+#include "scalarfield.h"
 #include "vectorfield.h"
 
 #include "driver.h"
@@ -50,7 +51,9 @@ private:
   Oxs_ConstKey<Oxs_SimState> current_state2;
 
   mutable Oxs_MeshValue<OC_REAL8m> Ms1, Ms2;  // Saturation magnetization
-  mutable Oxs_MeshValue<OC_REAL8m> Ms_inverse1, Ms_inverse2;  // 1/Ms
+  mutable Oxs_MeshValue<OC_REAL8m> Ms1_inverse, Ms2_inverse;  // 1/Ms
+  mutable Oxs_MeshValue<OC_REAL8m> Ms01, Ms02;  // Saturation magnetization
+  mutable Oxs_MeshValue<OC_REAL8m> Ms01_inverse, Ms02_inverse;  // 1/Ms0
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
 
   // Additional outputs for sublattices

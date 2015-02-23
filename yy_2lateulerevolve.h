@@ -77,7 +77,7 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> alpha_l;           // longitudinal
   // alpha_t0 is the value at T = 0 K.
 
-  void UpdateMeshArrays(const Oxs_Mesh* mesh);
+  void UpdateMeshArrays(const Oxs_SimState& state);
 
   // Parameters used for longitudinal susceptibility
   // Exchange parameter J = nJ_0 and atomistic magnetic moment mu, where
@@ -131,9 +131,6 @@ private:
   Nb_TclCommand tempscript_cmd;
   // Stores last stage number to detect stage change
   OC_INDEX last_stage_number;
-  // Ms will change in LLB simulations. Store Ms at T = 0K.
-  Oxs_MeshValue<OC_REAL8m> Ms0, Ms0_inverse;
-  OC_BOOL isMs0Set;
   // The following also updates kB_T.
   void UpdateStageTemperature(const Oxs_SimState& stage);
 
