@@ -103,6 +103,12 @@ void YY_2LatTimeDriver::GetInitialState(
   Oxs_SimState& tempstate2_ = tempstate2.GetWriteReference();
   tempstate_.lattice1 = &tempstate1_;
   tempstate_.lattice2 = &tempstate2_;
+  tempstate1_.total_lattice = &tempstate_;
+  tempstate1_.lattice2 = &tempstate2_;
+  tempstate2_.total_lattice = &tempstate_;
+  tempstate2_.lattice1 = &tempstate1_;
+  tempstate1_.lattice_type = Oxs_SimState::LATTICE1;
+  tempstate2_.lattice_type = Oxs_SimState::LATTICE2;
 
   tempstate.GetReadReference();  // Release write lock.
   tempstate1.GetReadReference();  // Release write lock.

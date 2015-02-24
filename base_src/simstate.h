@@ -89,6 +89,9 @@ public:
   Oxs_MeshValue<ThreeVector> spin;
 
   // For 2 lattice simulation, pointer to the other sublattice
+  enum LatticeType { TOTAL, LATTICE1, LATTICE2 } lattice_type;
+  // Default: TOTAL for standard simulations
+  Oxs_SimState* total_lattice;
   Oxs_SimState* lattice1;
   Oxs_SimState* lattice2;
 

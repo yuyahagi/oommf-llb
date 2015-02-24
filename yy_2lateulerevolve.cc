@@ -529,9 +529,15 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   driver->FillState(cstate1,workstate1);
   driver->FillState(cstate2,workstate2);
 
-  // Couple two sublattices through pointers
+  // Set pointers to the sublattice
   workstate.lattice1 = &workstate1;
   workstate.lattice2 = &workstate2;
+  workstate1.total_lattice = &workstate;
+  workstate1.lattice2 = &workstate2;
+  workstate2.total_lattice = &workstate;
+  workstate2.lattice1 = &workstate1;
+  workstate1.lattice_type = Oxs_SimState::LATTICE1;
+  workstate2.lattice_type = Oxs_SimState::LATTICE2;
 
   if(cstate.mesh->Id() != workstate.mesh->Id()) {
     throw Oxs_Ext::Error(this,
