@@ -586,6 +586,26 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
         //   locks do not accumulate.  However, it is the
         //   responsibility of Step or its callees to release
         //   the write lock, once next_state is fully populated.
+
+        // Since the instances of next_state may have been used before,
+        // their lattice_type and pointers may be wrong. Set them again.
+        { 
+          Oxs_SimState& nstate = next_state.GetWriteReference();
+          Oxs_SimState& nstate1 = next_state1.GetWriteReference();
+          Oxs_SimState& nstate2 = next_state2.GetWriteReference();
+          nstate.lattice_type = Oxs_SimState::TOTAL;
+          nstate1.lattice_type = Oxs_SimState::LATTICE1;
+          nstate2.lattice_type = Oxs_SimState::LATTICE2;
+          nstate.total_lattice = NULL;
+          nstate.lattice1 = &nstate1;
+          nstate.lattice2 = &nstate2;
+          nstate1.total_lattice = &nstate;
+          nstate1.lattice1 = NULL;
+          nstate1.lattice2 = &nstate2;
+          nstate2.total_lattice = &nstate;
+          nstate2.lattice1 = &nstate1;
+          nstate2.lattice2 = NULL;
+        }
 #if REPORT_TIME
         driversteptime.Start();
 #endif // REPORT_TIME
@@ -604,7 +624,8 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
           // Good step.  Release read lock on old current_state,
           // and copy key from next_state.
           next_state.GetReadReference();  // Safety write lock release
-          next_state2.GetReadReference();  // Safety write lock release
+          next_state1.GetReadReference();
+          next_state2.GetReadReference();
           current_state = next_state; // Free old read lock
           current_state1 = next_state1; // Free old read lock
           current_state2 = next_state2; // Free old read lock
