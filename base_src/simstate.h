@@ -88,6 +88,13 @@ public:
 
   Oxs_MeshValue<ThreeVector> spin;
 
+  // For 2 lattice simulation, pointer to the other sublattice
+  enum LatticeType { TOTAL, LATTICE1, LATTICE2 } lattice_type;
+  // Default: TOTAL for standard simulations
+  Oxs_SimState* total_lattice;
+  Oxs_SimState* lattice1;
+  Oxs_SimState* lattice2;
+
   void CloneHeader(Oxs_SimState& new_state) const;
   /// Copies all of the above data, except for the spin data.
   /// Does set new_state.spin to the size appropriate for

@@ -11,22 +11,25 @@ Destination mmDataTable mmDataTable
 Destination mmGraph mmGraph
 Destination mmDisp1 mmDisp
 Destination mmDisp2 mmDisp
+Destination mmDisp3 mmDisp
 
-#Schedule DataTable Archiv Stage 1
+Schedule DataTable Archiv Step 10
 Schedule DataTable mmDataTable Step 10
 Schedule DataTable mmGraph Step 10
-Schedule Oxs_TimeDriver::Magnetization mmDisp1 Step 10
-#Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
+Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 10
+Schedule YY_2LatTimeDriver::Magnetization1 mmDisp2 Step 10
+Schedule YY_2LatTimeDriver::Magnetization2 mmDisp3 Step 10
+#Schedule Oxs_TimeDriver::Spin mmDisp2 Step 10
 
 
 Specify Oxs_BoxAtlas:atlas {
   xrange {0 1e-7}
   yrange {0 1e-7}
-  zrange {0 5e-9}
+  zrange {0 10e-9}
 }
 
 Specify Oxs_RectangularMesh:mesh {
-  cellsize {4e-9 4e-9 5e-9}
+  cellsize {10e-9 10e-9 10e-9}
   atlas :atlas
 }
 
@@ -55,12 +58,51 @@ proc SlidingField { xcutoff xrel yrel zrel } {
    return 290
 }
 
-Specify YY_LLBEulerEvolve:evolver {
+Specify Oxs_UniformScalarField:J1 {
+  value 1.47e-20
+}
+
+Specify Oxs_UniformScalarField:mu1 {
+  value 3e-23
+}
+
+Specify Oxs_UniformScalarField:Ms1 {
+  value 500e3
+}
+
+Specify Oxs_UniformVectorField:m01 {
+  norm 1
+  vector {1 0 0}
+}
+
+Specify Oxs_UniformScalarField:J2 {
+  value 1.0e-20
+}
+
+Specify Oxs_UniformScalarField:mu2 {
+  value 2e-23
+}
+
+Specify Oxs_UniformScalarField:Ms2 {
+  value 200e3
+}
+
+Specify Oxs_UniformVectorField:m02 {
+  norm 1
+  vector {0 1 0}
+}
+
+#Specify YY_LLBEulerEvolve:evolver {
+Specify YY_2LatEulerEvolve:evolver {
   do_precess 1
-  gamma_LL 2.21e5
-  alpha_t 0.1
-  J { Oxs_UniformScalarField  {value 1.47e-20} }
-  atom_moment { Oxs_UniformScalarField {value 3e-23} }
+  gamma_LL1 2.21e5
+  gamma_LL2 2.21e5
+  alpha_t1 0.1
+  alpha_t2 0.1
+  J1 :J1
+  J2 :J2
+  atom_moment1 :mu1
+  atom_moment2 :mu2
 	fixed_timestep 5e-14
 	tempscript TempScript
   tempscript_args { stage }
@@ -68,15 +110,19 @@ Specify YY_LLBEulerEvolve:evolver {
   use_stochastic 1
 }
 
-Specify Oxs_TimeDriver {
+#Specify Oxs_TimeDriver {
+Specify YY_2LatTimeDriver {
   basename test01
-  vector_field_output_format {binary 4}
-  scalar_output_format %.15g
   evolver :evolver
   mesh :mesh
   stopping_time { 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 }
   stage_count 0
-  Ms { Oxs_UniformScalarField  {value 500e3} }
-  m0 { Oxs_UniformVectorField { norm 1  vector {1 0 0} } }
+  Ms :Ms1
+  m0 :m01
+  Ms1 :Ms1
+  m01 :m01
+  Ms2 :Ms2
+  m02 :m02
+  normalize_aveM_output 0
 }
 

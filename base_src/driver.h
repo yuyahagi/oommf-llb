@@ -36,7 +36,8 @@ public:
 };
 
 class Oxs_Driver: public Oxs_Ext {
-private:
+//private:
+protected:
 #if REPORT_TIME
   // driversteptime records time (cpu and wall) spent in the driver's
   // Step function.  This information is reported to stderr when
@@ -79,7 +80,9 @@ Oxs_ScalarOutput<Oxs_Driver> name##_output
   Oxs_ScalarOutput<Oxs_Driver> aveMx_output;
   Oxs_ScalarOutput<Oxs_Driver> aveMy_output;
   Oxs_ScalarOutput<Oxs_Driver> aveMz_output;
-  void Fill__aveM_output(const Oxs_SimState&);
+  virtual void Fill__aveM_output(const Oxs_SimState&);
+  // For 2 lattice simulations, Fill__aveM_output() should be overridden in
+  // order to handle the time-varying scaling_aveM prorperly.
 
   struct OxsDriverProjectionOutput {
   public:
@@ -175,7 +178,8 @@ Oxs_ScalarOutput<Oxs_Driver> name##_output
   // Internal "Run" interface.  The difference with the external
   // interface is that the internal version includes a stage_increment
   // parameter for use by the SetStage method.
-  void Run(vector<OxsRunEvent>& results,OC_INT4m stage_increment);
+  virtual void Run(vector<OxsRunEvent>& results,OC_INT4m stage_increment);
+  // For 2 lattice simulation, it should be overridden.
 
   // Starting values.  These shadow fields in Oxs_SimState.
   // Use SetStartValues to copy to Oxs_SimState
@@ -218,7 +222,7 @@ public:
 
   virtual Oxs_ConstKey<Oxs_SimState> GetInitialState() const =0;
 
-  const Oxs_SimState* GetCurrentState() const {
+  virtual const Oxs_SimState* GetCurrentState() const {
     return current_state.GetPtr();
   }
 
@@ -238,10 +242,12 @@ public:
   // unable to step as requested.
 
   // External problem "Run" interface; called from director.
-  void Run(vector<OxsRunEvent>& results) {
+  virtual void Run(vector<OxsRunEvent>& results) {
     Run(results,1); // Call internal Run interface with default
     // stage increment (==1).
   }
+  // Virtual function for 2 lattice simulation
+  //virtual void Run_2lat(vector<OxsRunEvent>& results) =0;
 
   // GetIteration, SetStage and GetStage throw exceptions on errors.
   OC_UINT4m GetIteration() const;
