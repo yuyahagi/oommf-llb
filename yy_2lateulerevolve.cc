@@ -82,7 +82,8 @@ YY_2LatEulerEvolve::YY_2LatEulerEvolve(
     energy_accum_count_limit(25),
     energy_state_id(0),next_timestep(0.),
     KBoltzmann(1.38062e-23),
-    iteration_Tcalculated(0),
+    iteration_hFluct1_calculated(0),
+    iteration_hFluct2_calculated(0),
     has_tempscript(0),
     last_stage_number(0)
 {
@@ -118,10 +119,18 @@ YY_2LatEulerEvolve::YY_2LatEulerEvolve(
        " step_headroom value must be bigger than 0.");
   }
 
-  if(HasInitValue("alpha_t")) {
-    OXS_GET_INIT_EXT_OBJECT("alpha_t",Oxs_ScalarField,alpha_t_init);
+  if(HasInitValue("alpha_t1")) {
+    OXS_GET_INIT_EXT_OBJECT("alpha_t1",Oxs_ScalarField,alpha_t1_init);
   } else {
-    alpha_t_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+    alpha_t1_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+                          (MakeNew("Oxs_UniformScalarField",director,
+                                   "value 0.5")));
+  }
+
+  if(HasInitValue("alpha_t2")) {
+    OXS_GET_INIT_EXT_OBJECT("alpha_t2",Oxs_ScalarField,alpha_t2_init);
+  } else {
+    alpha_t2_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
                           (MakeNew("Oxs_UniformScalarField",director,
                                    "value 0.5")));
   }
@@ -129,34 +138,63 @@ YY_2LatEulerEvolve::YY_2LatEulerEvolve(
   // Flag to include stochastic field
   use_stochastic = GetRealInitValue("use_stochastic",0);
 
-  if(HasInitValue("J")) {
-    OXS_GET_INIT_EXT_OBJECT("J",Oxs_ScalarField,J_init);
+  if(HasInitValue("J1")) {
+    OXS_GET_INIT_EXT_OBJECT("J1",Oxs_ScalarField,J1_init);
   } else {
-    throw Oxs_Ext::Error(this,"Exchange parameter J not specified.\n");
+    throw Oxs_Ext::Error(this,"Exchange parameter J1 not specified.\n");
   }
 
-  if(HasInitValue("atom_moment")) {
-    OXS_GET_INIT_EXT_OBJECT("atom_moment",Oxs_ScalarField,mu_init);
+  if(HasInitValue("J2")) {
+    OXS_GET_INIT_EXT_OBJECT("J2",Oxs_ScalarField,J2_init);
   } else {
-    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment"
+    throw Oxs_Ext::Error(this,"Exchange parameter J2 not specified.\n");
+  }
+
+  if(HasInitValue("atom_moment1")) {
+    OXS_GET_INIT_EXT_OBJECT("atom_moment1",Oxs_ScalarField,mu1_init);
+  } else {
+    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment1"
+        " is not specified.");
+  }
+
+  if(HasInitValue("atom_moment2")) {
+    OXS_GET_INIT_EXT_OBJECT("atom_moment2",Oxs_ScalarField,mu2_init);
+  } else {
+    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment2"
         " is not specified.");
   }
 
   // User may specify either gamma_G (Gilbert) or
   // gamma_LL (Landau-Lifshitz).  Code uses "gamma"
   // which is LL form.
-  gamma_style = GS_INVALID;
-  if(HasInitValue("gamma_G") && HasInitValue("gamma_LL")) {
+  gamma1_style = GS_INVALID;
+  if(HasInitValue("gamma_G1") && HasInitValue("gamma_LL1")) {
     throw Oxs_Ext::Error(this,"Invalid Specify block; "
-       "both gamma_G and gamma_LL specified.");
-  } else if(HasInitValue("gamma_G")) {
-    OXS_GET_INIT_EXT_OBJECT("gamma_G",Oxs_ScalarField,gamma_init);
-    gamma_style = GS_G;
-  } else if(HasInitValue("gamma_LL")) {
-    OXS_GET_INIT_EXT_OBJECT("gamma_LL",Oxs_ScalarField,gamma_init);
-    gamma_style = GS_LL;
+       "both gamma_G1 and gamma_LL1 specified.");
+  } else if(HasInitValue("gamma_G1")) {
+    OXS_GET_INIT_EXT_OBJECT("gamma_G1",Oxs_ScalarField,gamma1_init);
+    gamma1_style = GS_G;
+  } else if(HasInitValue("gamma_LL1")) {
+    OXS_GET_INIT_EXT_OBJECT("gamma_LL1",Oxs_ScalarField,gamma1_init);
+    gamma1_style = GS_LL;
   } else {
-    gamma_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+    gamma1_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
+                          (MakeNew("Oxs_UniformScalarField",director,
+                                   "value 2.211e5")));
+  }
+
+  gamma2_style = GS_INVALID;
+  if(HasInitValue("gamma_G2") && HasInitValue("gamma_LL2")) {
+    throw Oxs_Ext::Error(this,"Invalid Specify block; "
+       "both gamma_G2 and gamma_LL2 specified.");
+  } else if(HasInitValue("gamma_G2")) {
+    OXS_GET_INIT_EXT_OBJECT("gamma_G2",Oxs_ScalarField,gamma2_init);
+    gamma2_style = GS_G;
+  } else if(HasInitValue("gamma_LL2")) {
+    OXS_GET_INIT_EXT_OBJECT("gamma_LL2",Oxs_ScalarField,gamma2_init);
+    gamma2_style = GS_LL;
+  } else {
+    gamma2_init.SetAsOwner(dynamic_cast<Oxs_ScalarField *>
                           (MakeNew("Oxs_UniformScalarField",director,
                                    "value 2.211e5")));
   }
@@ -247,9 +285,12 @@ OC_BOOL YY_2LatEulerEvolve::Init()
   dm_dt_l2_output.CacheRequestIncrement(1);
   mxH2_output.CacheRequestIncrement(1);
 
-  alpha_t0.Release(); alpha_t.Release(); alpha_l.Release();
-  gamma.Release();
-  Tc.Release();
+  alpha_t10.Release(); alpha_t1.Release(); alpha_l1.Release();
+  alpha_t20.Release(); alpha_t2.Release(); alpha_l2.Release();
+  gamma1.Release(); gamma2.Release();
+  J1.Release(); J2.Release();
+  mu1.Release(); mu2.Release();
+  Tc1.Release(); Tc2.Release();
   energy.Release();
   total_field1.Release();
   total_field2.Release();
@@ -259,8 +300,10 @@ OC_BOOL YY_2LatEulerEvolve::Init()
   new_dm_dt_t2.Release();
   new_dm_dt_l2.Release();
 
-  hFluct_t.Release(); hFluct_l.Release();
-  hFluctVarConst_t.Release(); hFluctVarConst_l.Release();
+  hFluct_t1.Release(); hFluct_l1.Release();
+  hFluct_t2.Release(); hFluct_l2.Release();
+  hFluctVarConst_t1.Release(); hFluctVarConst_l1.Release();
+  hFluctVarConst_t2.Release(); hFluctVarConst_l2.Release();
 
   energy_state_id=0;   // Mark as invalid state
   next_timestep=0.;    // Dummy value
@@ -318,47 +361,117 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
   iteration_now++;
   // if not done, hFluct for first step may be calculated too often
   
-  if(mesh_id != mesh_->Id() || !gamma.CheckMesh(mesh_)) {
+  if(mesh_id != mesh_->Id() || !gamma1.CheckMesh(mesh_)) {
     // First go or mesh change detected
-    Tc.AdjustSize(mesh_);
-    J_init->FillMeshValue(mesh_,J);
-    mu_init->FillMeshValue(mesh_,mu);
+    Tc1.AdjustSize(mesh_);
+    Tc2.AdjustSize(mesh_);
+    J1_init->FillMeshValue(mesh_,J1);
+    J2_init->FillMeshValue(mesh_,J2);
+    mu1_init->FillMeshValue(mesh_,mu1);
+    mu2_init->FillMeshValue(mesh_,mu2);
     for(OC_INDEX i=0; i<size; i++) {
-      Tc[i] = J[i]/(3*KBoltzmann);
+      Tc1[i] = J1[i]/(3*KBoltzmann);
+      Tc2[i] = J2[i]/(3*KBoltzmann);
     }
 
-    alpha_t_init->FillMeshValue(mesh_,alpha_t0);
-    gamma_init->FillMeshValue(mesh_,gamma);
+    alpha_t1_init->FillMeshValue(mesh_,alpha_t10);
+    alpha_t2_init->FillMeshValue(mesh_,alpha_t20);
+    gamma1_init->FillMeshValue(mesh_,gamma1);
+    gamma2_init->FillMeshValue(mesh_,gamma2);
     if(!allow_signed_gamma) {
-      for(i=0;i<size;++i) gamma[i] = fabs(gamma[i]);
-    }
-    if(gamma_style == GS_G) { // Convert to LL form
       for(i=0;i<size;++i) {
-        gamma[i] /= (1+alpha_t0[i]*alpha_t0[i]);
+        gamma1[i] = fabs(gamma1[i]);
+        gamma2[i] = fabs(gamma2[i]);
+      }
+    }
+    if(gamma1_style == GS_G) { // Convert to LL form
+      for(i=0;i<size;++i) {
+        gamma1[i] /= (1+alpha_t10[i]*alpha_t10[i]);
+      }
+    }
+
+    if(gamma1_style == GS_G) { // Convert to LL form
+      for(i=0;i<size;++i) {
+        gamma2[i] /= (1+alpha_t20[i]*alpha_t20[i]);
       }
     }
 
     // Prepare temperature-dependent mesh value arrays
-    m_e.AdjustSize(mesh_);
-    chi_l.AdjustSize(mesh_);
-    alpha_t.AdjustSize(mesh_);
-    alpha_l.AdjustSize(mesh_);
-    hFluctVarConst_t.AdjustSize(mesh_);
-    hFluctVarConst_l.AdjustSize(mesh_);
+    m_e1.AdjustSize(mesh_);
+    m_e2.AdjustSize(mesh_);
+    chi_l1.AdjustSize(mesh_);
+    chi_l2.AdjustSize(mesh_);
+    alpha_t1.AdjustSize(mesh_);
+    alpha_t2.AdjustSize(mesh_);
+    alpha_l1.AdjustSize(mesh_);
+    alpha_l2.AdjustSize(mesh_);
+    hFluctVarConst_t1.AdjustSize(mesh_);
+    hFluctVarConst_t2.AdjustSize(mesh_);
+    hFluctVarConst_l1.AdjustSize(mesh_);
+    hFluctVarConst_l2.AdjustSize(mesh_);
 
     // Other mesh value arrays
     total_field1.AdjustSize(mesh_);
     total_field2.AdjustSize(mesh_);
-    hFluct_t.AdjustSize(mesh_);     
-    hFluct_l.AdjustSize(mesh_);     
-    iteration_Tcalculated = 0;     
+    hFluct_t1.AdjustSize(mesh_);     
+    hFluct_t2.AdjustSize(mesh_);     
+    hFluct_l1.AdjustSize(mesh_);     
+    hFluct_l2.AdjustSize(mesh_);     
+    iteration_hFluct1_calculated = 0;     
+    iteration_hFluct2_calculated = 0;     
 
     // Update stage-dependent temperature and temperature-dependent parameters
-    UpdateStageTemperature(state_);
-    UpdateMeshArrays(state_);
+    UpdateStageTemperature(*(state_.total_lattice));
+    UpdateMeshArrays(*(state_.total_lattice));
   }
 
-  if (use_stochastic && iteration_now > iteration_Tcalculated) {
+  // Judge the type of lattice (sublattice1 or 2) and use corresponding
+  // parameters for calculation
+  const Oxs_MeshValue<OC_REAL8m>* Tc;
+  const Oxs_MeshValue<OC_REAL8m>* alpha_t;
+  const Oxs_MeshValue<OC_REAL8m>* alpha_l;
+  const Oxs_MeshValue<OC_REAL8m>* gamma;
+  const Oxs_MeshValue<OC_REAL8m>* m_e;
+  const Oxs_MeshValue<OC_REAL8m>* chi_l;
+  Oxs_MeshValue<OC_REAL8m>* hFluctVarConst_t;
+  Oxs_MeshValue<OC_REAL8m>* hFluctVarConst_l;
+  Oxs_MeshValue<ThreeVector>* hFluct_t;
+  Oxs_MeshValue<ThreeVector>* hFluct_l;
+  OC_UINT4m* iteration_hFluct_calculated;
+
+  switch(state_.lattice_type) {
+  case Oxs_SimState::LATTICE1:
+    Tc = &Tc1;
+    alpha_t = &alpha_t1;
+    alpha_l = &alpha_l1;
+    gamma = &gamma1;
+    m_e = &m_e1;
+    chi_l = &chi_l1;
+    hFluctVarConst_t = &hFluctVarConst_t1;
+    hFluctVarConst_l = &hFluctVarConst_l1;
+    hFluct_t = &hFluct_t1;
+    hFluct_l = &hFluct_l1;
+    iteration_hFluct_calculated = &iteration_hFluct1_calculated;
+    break;
+  case Oxs_SimState::LATTICE2:
+    Tc = &Tc2;
+    alpha_t = &alpha_t2;
+    alpha_l = &alpha_l2;
+    gamma = &gamma2;
+    m_e = &m_e2;
+    chi_l = &chi_l2;
+    hFluctVarConst_t = &hFluctVarConst_t2;
+    hFluctVarConst_l = &hFluctVarConst_l2;
+    hFluct_t = &hFluct_t2;
+    hFluct_l = &hFluct_l2;
+    iteration_hFluct_calculated = &iteration_hFluct2_calculated;
+    break;
+  default:
+    throw Oxs_ExtError(this, "PROGRAMMING ERROR: YY_2LatEulerEvolve::Calculate_dm_dt()"
+        " is called with a wrong type of simulation state.\n");
+  }
+
+  if (use_stochastic && iteration_now > *iteration_hFluct_calculated) {
     // i.e. if thermal field is not calculated for this step
     for(i=0;i<size;i++){
       if(Ms_[i] != 0){
@@ -366,15 +479,15 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
         // opposed to dm_dt * delta_t for deterministic functions.
         // This is the standard deviation of the gaussian distribution
         // used to represent the thermal perturbations
-        hFluctSigma_t = sqrt(hFluctVarConst_t[i] / fixed_timestep);
-        hFluctSigma_l = sqrt(hFluctVarConst_l[i] / fixed_timestep);
+        hFluctSigma_t = sqrt((*hFluctVarConst_t)[i] / fixed_timestep);
+        hFluctSigma_l = sqrt((*hFluctVarConst_l)[i] / fixed_timestep);
 
-        hFluct_t[i].x = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
-        hFluct_t[i].y = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
-        hFluct_t[i].z = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
-        hFluct_l[i].x = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
-        hFluct_l[i].y = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
-        hFluct_l[i].z = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
+        (*hFluct_t)[i].x = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        (*hFluct_t)[i].y = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        (*hFluct_t)[i].z = hFluctSigma_t*Gaussian_Random(0.0, 1.0);
+        (*hFluct_l)[i].x = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
+        (*hFluct_l)[i].y = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
+        (*hFluct_l)[i].z = hFluctSigma_l*Gaussian_Random(0.0, 1.0);
       }
     }
   }
@@ -384,9 +497,9 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       dm_dt_t_[i].Set(0.0,0.0,0.0);
       dm_dt_l_[i].Set(0.0,0.0,0.0);
     } else {
-      OC_REAL8m cell_alpha_t = alpha_t[i];
-      OC_REAL8m cell_alpha_l = alpha_l[i];
-      OC_REAL8m cell_gamma = gamma[i];
+      OC_REAL8m cell_alpha_t = (*alpha_t)[i];
+      OC_REAL8m cell_alpha_l = (*alpha_l)[i];
+      OC_REAL8m cell_gamma = (*gamma)[i];
 
       // deterministic part
       scratch_t = mxH_[i];
@@ -406,7 +519,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
         // Note: The stochastic field is NOT included in the first term of 
         // the LLB equation. See PRB 85, 014433 (2012). The second form of 
         // LLB is the above article is implemented here.
-        dm_fluct_t = spin_[i] ^ hFluct_t[i];  // cross product mxhFluct_t
+        dm_fluct_t = spin_[i] ^ (*hFluct_t)[i];  // cross product mxhFluct_t
         dm_fluct_t *= -cell_gamma;
         scratch_t += dm_fluct_t;  // -|gamma|*mx(H+hFluct_t)
       }
@@ -420,12 +533,12 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       if(temperature[i] != 0) {
         OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
         OC_REAL8m cell_msq = cell_m*cell_m;
-        if(temperature[i] < Tc[i]) {
-          temp += 0.5/chi_l[i]
-            *(1-cell_msq/(m_e[i]*m_e[i]))*cell_m;
+        if(temperature[i] < (*Tc)[i]) {
+          temp += 0.5/(*chi_l)[i]
+            *(1-cell_msq/((*m_e)[i]*(*m_e)[i]))*cell_m;
         } else {
-          temp += -1.0/chi_l[i]
-            *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*cell_msq)*cell_m;
+          temp += -1.0/(*chi_l)[i]
+            *(1+0.6*((*Tc)[i]/(temperature[i]-(*Tc)[i]))*cell_msq)*cell_m;
         }
         temp *= cell_gamma*cell_alpha_l*Ms0_[i]*Ms_inverse_[i];
         scratch_l = temp*spin_[i];
@@ -437,14 +550,14 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 
         if(use_stochastic) {
           // Longitudinal stochastic field parallel to spin
-          dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
+          dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
         }
       }
     }
   }
 
   // now hFluct_t is definetely calculated for this iteration
-  iteration_Tcalculated = iteration_now;
+  *iteration_hFluct_calculated = iteration_now;
 
   // Zero dm_dt at fixed spin sites
   UpdateFixedSpinList(mesh_);
@@ -462,7 +575,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
     tempvec += dm_dt_l_[i];
     OC_REAL8m dm_dt_sq = tempvec.MagSq();
     if(dm_dt_sq>0.0) {
-      dE_dt_sum += -1*MU0*fabs(gamma[i]*alpha_t[i])
+      dE_dt_sum += -1*MU0*fabs((*gamma)[i]*(*alpha_t)[i])
         *mxH_[i].MagSq() * Ms_[i] * mesh_->Volume(i);
       if(dm_dt_sq>max_dm_dt_sq) {
         max_dm_dt_sq=dm_dt_sq;
@@ -778,9 +891,8 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   const Oxs_SimState& nstate
     = next_state.GetReadReference();  // Release write lock
 
-  // TODO: Do this for nstate2 as well
   //  Calculate delta E
-  OC_REAL8m new_pE_pt, new_pE_pt2;
+  OC_REAL8m new_pE_pt1, new_pE_pt2;
   GetEnergyDensity(
       nstate,
       new_energy,
@@ -788,7 +900,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
       &mxH2_output.cache.value,
       &total_field1,
       &total_field2,
-      new_pE_pt);
+      new_pE_pt1);
   mxH1_output.cache.state_id=nstate.Id();
   mxH2_output.cache.state_id=nstate.Id();
   const Oxs_MeshValue<ThreeVector>& mxH1 = mxH1_output.cache.value;
@@ -815,7 +927,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   // MJD Notes II, p72 (18-Jan-2001).
 
   OC_REAL8m new_max_dm_dt, new_max_dm_dt2;
-  OC_REAL8m new_dE_dt, new_timestep_lower_bound;
+  OC_REAL8m new_dE_dt1, new_timestep_lower_bound;
   OC_REAL8m new_dE_dt2, new_timestep_lower_bound2;
 
   // For sublattice 1
@@ -823,11 +935,11 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
       nstate1, 
       mxH1, 
       total_field1, 
-      new_pE_pt, 
+      new_pE_pt1, 
       new_dm_dt_t1,
       new_dm_dt_l1,
       new_max_dm_dt, 
-      new_dE_dt, 
+      new_dE_dt1, 
       new_timestep_lower_bound);
 
   // For sublattice 2
@@ -856,13 +968,13 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
   // Energy check control
 #ifdef FOO
-  OC_REAL8m expected_dE = 0.5 * (dE_dt+new_dE_dt) * stepsize;
+  OC_REAL8m expected_dE = 0.5 * (dE_dt+new_dE_dt1) * stepsize;
   OC_REAL8m dE_error = dE - expected_dE;
   OC_REAL8m max_allowed_dE = expected_dE + 0.25*fabs(expected_dE);
   max_allowed_dE += OC_REAL8_EPSILON*fabs(total_E);
   max_allowed_dE += 2*sqrt(var_dE);
 #else
-  OC_REAL8m max_allowed_dE = 0.5 * (pE_pt+new_pE_pt) * stepsize
+  OC_REAL8m max_allowed_dE = 0.5 * (pE_pt+new_pE_pt1) * stepsize
     + OC_MAX(OC_REAL8_EPSILON*fabs(total_E),2*sqrt(var_dE));
   /// The above says essentially that the spin adjustment can
   /// increase the energy by only as much as pE/pt allows; in
@@ -921,6 +1033,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     }
   }
 
+  // TODO: Report value for lattice2 too.
   // Otherwise, accept step.  Calculate next step using
   // estimate of step size that would just meet the error
   // restriction (with "headroom" safety margin).
@@ -934,9 +1047,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   if(!nstate.AddDerivedData("Timestep lower bound",
           new_timestep_lower_bound) ||
      !nstate.AddDerivedData("Max dm/dt",new_max_dm_dt) ||
-     !nstate.AddDerivedData("dE/dt",new_dE_dt) ||
+     !nstate.AddDerivedData("dE/dt",new_dE_dt1) ||
      !nstate.AddDerivedData("Delta E",dE) ||
-     !nstate.AddDerivedData("pE/pt",new_pE_pt)) {
+     !nstate.AddDerivedData("pE/pt",new_pE_pt1)) {
     throw Oxs_Ext::Error(this,
        "YY_2LatEulerEvolve::Step:"
        " Programming error; data cache already set.");
@@ -957,41 +1070,59 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
   return 1;  // Good step
 }   // end Step
 
+// Call with the total_lattice state and it updates values for both
+// sublattices.
 void YY_2LatEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
 {
   mesh_id = 0; // Mark update in progress
   const Oxs_Mesh* mesh = state.mesh;
-  const Oxs_MeshValue<OC_REAL8m>& Ms0 = *(state.Ms0);
-  const Oxs_MeshValue<OC_REAL8m>& Ms0_inverse = *(state.Ms0_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& Ms10 = *(state.lattice1->Ms0);
+  const Oxs_MeshValue<OC_REAL8m>& Ms20 = *(state.lattice2->Ms0);
+  const Oxs_MeshValue<OC_REAL8m>& Ms10_inverse = *(state.lattice1->Ms0_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& Ms20_inverse = *(state.lattice2->Ms0_inverse);
   const OC_INDEX size = mesh->Size();
   OC_INDEX i;
 
-  // Update Tc first
   Update_m_e_chi_l(/*tol=*/1e-4);
 
   for(i=0;i<size;i++) {
-    alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
-    if(temperature[i] > Tc[i]) {
-      alpha_l[i] = alpha_t[i];
+    alpha_t1[i] = alpha_t10[i]*(1-temperature[i]/(3*Tc1[i]));
+    alpha_t2[i] = alpha_t20[i]*(1-temperature[i]/(3*Tc2[i]));
+    if(temperature[i] > Tc1[i]) {
+      alpha_l1[i] = alpha_t1[i];
     } else {
-      alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
+      alpha_l1[i] = alpha_t10[i]*2*temperature[i]/(3*Tc1[i]);
+    }
+    if(temperature[i] > Tc2[i]) {
+      alpha_l2[i] = alpha_t2[i];
+    } else {
+      alpha_l2[i] = alpha_t20[i]*2*temperature[i]/(3*Tc2[i]);
     }
 
     // Update variance of stochastic field
     // h_fluctVarConst_t = 2*(alpha_t-alpha_l)*kB*T/(MU0*gamma*alpha_t^2*Ms0*Vol)
     // h_fluctVarConst_l = 2*(alpha_l-gamma)*kB*T/(MU0*Ms0*Vol)
-    OC_REAL8m cell_alpha_t = fabs(alpha_t[i]);
-    OC_REAL8m cell_alpha_l = fabs(alpha_l[i]);
-    OC_REAL8m cell_gamma = fabs(gamma[i]);
+    OC_REAL8m cell_alpha_t1 = fabs(alpha_t1[i]);
+    OC_REAL8m cell_alpha_t2 = fabs(alpha_t2[i]);
+    OC_REAL8m cell_alpha_l1 = fabs(alpha_l1[i]);
+    OC_REAL8m cell_alpha_l2 = fabs(alpha_l2[i]);
+    OC_REAL8m cell_gamma1 = fabs(gamma1[i]);
+    OC_REAL8m cell_gamma2 = fabs(gamma2[i]);
     OC_REAL8m cell_vol = mesh->Volume(i);
-    hFluctVarConst_t[i] = 2*fabs(cell_alpha_t-cell_alpha_l);
-    hFluctVarConst_t[i] *= kB_T[i]*Ms0_inverse[i];
-    hFluctVarConst_t[i] /= MU0*cell_gamma
-      *cell_alpha_t*cell_alpha_t*cell_vol;
-    hFluctVarConst_l[i] = 2*cell_alpha_l*cell_gamma;
-    hFluctVarConst_l[i] *= kB_T[i]*Ms0_inverse[i];
-    hFluctVarConst_l[i] /= MU0*cell_vol;
-    // TODO: Verify use of MU0
+    hFluctVarConst_t1[i] = 2*fabs(cell_alpha_t1-cell_alpha_l1);
+    hFluctVarConst_t1[i] *= kB_T[i]*Ms10_inverse[i];
+    hFluctVarConst_t1[i] /= MU0*cell_gamma1
+      *cell_alpha_t1*cell_alpha_t1*cell_vol;
+    hFluctVarConst_t2[i] = 2*fabs(cell_alpha_t2-cell_alpha_l2);
+    hFluctVarConst_t2[i] *= kB_T[i]*Ms20_inverse[i];
+    hFluctVarConst_t2[i] /= MU0*cell_gamma2
+      *cell_alpha_t2*cell_alpha_t2*cell_vol;
+    hFluctVarConst_l1[i] = 2*cell_alpha_l1*cell_gamma1;
+    hFluctVarConst_l1[i] *= kB_T[i]*Ms10_inverse[i];
+    hFluctVarConst_l1[i] /= MU0*cell_vol;
+    hFluctVarConst_l2[i] = 2*cell_alpha_l2*cell_gamma2;
+    hFluctVarConst_l2[i] *= kB_T[i]*Ms20_inverse[i];
+    hFluctVarConst_l2[i] /= MU0*cell_vol;
   }
 
   mesh_id = mesh->Id();
@@ -1001,16 +1132,17 @@ void YY_2LatEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
 {
   // Solve for the equilibrium spin polarization m_e using the Newton's
   // method. Returns 0 when A <= 0 or A >= 1/3.
-  const OC_REAL8m size = J.Size();
+  const OC_REAL8m size = J1.Size();
+  const OC_REAL8m tol = fabs(tol_in);
 
+  // Lattice 1
   for(OC_INDEX i=0; i<size; i++) {
-    OC_REAL8m A = kB_T[i]/J[i];
+    OC_REAL8m A = kB_T[i]/J1[i];
     if(A <= 0 || A >= 1./3.) {
-      m_e[i] = 0;
-      chi_l[i] = MU0*mu[i]/J[i];
+      m_e1[i] = 0;
+      chi_l1[i] = MU0*mu1[i]/J1[i];
     } else {
       // Solve for equilibrium spin polarization m_e using Newton's method
-      const OC_REAL8m tol = fabs(tol_in);
       OC_REAL8m x = 1.0/A;
       OC_REAL8m y = Langevin(x)-A*x;
       OC_REAL8m dy = LangevinDeriv(x)-A;
@@ -1019,13 +1151,39 @@ void YY_2LatEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
         y = Langevin(x)-A*x;
         dy = LangevinDeriv(x)-A;
       }
-      m_e[i] = A*x;
+      m_e1[i] = A*x;
 
       // Calculate longitudinal susceptibility chi_l
-      OC_REAL8m dL = LangevinDeriv(J[i]*m_e[i]/(kB_T[i]));
+      OC_REAL8m dL = LangevinDeriv(J1[i]*m_e1[i]/(kB_T[i]));
       OC_REAL8m beta = 1/(kB_T[i]);
 
-      chi_l[i] = MU0*mu[i]*beta*dL/(1-beta*J[i]*dL);
+      chi_l1[i] = MU0*mu1[i]*beta*dL/(1-beta*J1[i]*dL);
+    }
+  }
+
+  // Lattice 2
+  for(OC_INDEX i=0; i<size; i++) {
+    OC_REAL8m A = kB_T[i]/J2[i];
+    if(A <= 0 || A >= 1./3.) {
+      m_e2[i] = 0;
+      chi_l2[i] = MU0*mu2[i]/J2[i];
+    } else {
+      // Solve for equilibrium spin polarization m_e using Newton's method
+      OC_REAL8m x = 1.0/A;
+      OC_REAL8m y = Langevin(x)-A*x;
+      OC_REAL8m dy = LangevinDeriv(x)-A;
+      while(fabs(y)>tol) {
+        x -= y/dy;
+        y = Langevin(x)-A*x;
+        dy = LangevinDeriv(x)-A;
+      }
+      m_e2[i] = A*x;
+
+      // Calculate longitudinal susceptibility chi_l
+      OC_REAL8m dL = LangevinDeriv(J2[i]*m_e2[i]/(kB_T[i]));
+      OC_REAL8m beta = 1/(kB_T[i]);
+
+      chi_l2[i] = MU0*mu2[i]*beta*dL/(1-beta*J2[i]*dL);
     }
   }
 }
@@ -1112,7 +1270,8 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
         dm_dt_t1,
         dm_dt_l1,
         max_dm_dt_output.cache.value,
-        dE_dt_output.cache.value,timestep_lower_bound);
+        dE_dt_output.cache.value,
+        timestep_lower_bound);
     dm_dt_t1_output.cache.state_id=state.Id();
     dm_dt_l1_output.cache.state_id=state.Id();
 
@@ -1130,7 +1289,8 @@ void YY_2LatEulerEvolve::UpdateDerivedOutputs(const Oxs_SimState& state)
         dm_dt_t2,
         dm_dt_l2,
         max_dm_dt_output.cache.value,
-        dE_dt_output.cache.value,timestep_lower_bound);
+        dE_dt_output.cache.value,
+        timestep_lower_bound);
     dm_dt_t2_output.cache.state_id=state.Id();
     dm_dt_l2_output.cache.state_id=state.Id();
 

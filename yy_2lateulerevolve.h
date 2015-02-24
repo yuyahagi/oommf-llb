@@ -62,34 +62,40 @@ private:
   OC_BOOL do_precess;
   OC_BOOL allow_signed_gamma;
   enum GammaStyle { GS_INVALID, GS_LL, GS_G };
-  GammaStyle gamma_style; // Landau-Lifshitz or Gilbert
-  OC_BOOL use_stochastic; // Include stochastic field
+  GammaStyle gamma1_style, gamma2_style;  // Landau-Lifshitz or Gilbert
+  OC_BOOL use_stochastic;                 // Include stochastic field
 
   // =======================================================================
   // Spatially variable coefficients
   // =======================================================================
   // Some of them are temperature dependent (e.g., alpha_t, alpha_l) and
   // have to be updated after changing temperature.
-  Oxs_OwnedPointer<Oxs_ScalarField> gamma_init;
-  mutable Oxs_MeshValue<OC_REAL8m> gamma;             // LL gyromagnetic ratio
-  Oxs_OwnedPointer<Oxs_ScalarField> alpha_t_init;
-  mutable Oxs_MeshValue<OC_REAL8m> alpha_t, alpha_t0; // transverse
-  mutable Oxs_MeshValue<OC_REAL8m> alpha_l;           // longitudinal
-  // alpha_t0 is the value at T = 0 K.
+  Oxs_OwnedPointer<Oxs_ScalarField> gamma1_init, gamma2_init;
+  mutable Oxs_MeshValue<OC_REAL8m> gamma1, gamma2;        // LL gyromagnetic ratio
+  Oxs_OwnedPointer<Oxs_ScalarField> alpha_t1_init, alpha_t2_init;
+  mutable Oxs_MeshValue<OC_REAL8m> alpha_t1, alpha_t2;    // transverse
+  mutable Oxs_MeshValue<OC_REAL8m> alpha_l1, alpha_l2;    // longitudinal
+  mutable Oxs_MeshValue<OC_REAL8m> alpha_t10, alpha_t20;
+  // alpha_t10, _t20 are the values at T = 0 K.
 
   void UpdateMeshArrays(const Oxs_SimState& state);
+  // Call with the total_lattice state and it updates values for both
+  // sublattices.
 
   // Parameters used for longitudinal susceptibility
   // Exchange parameter J = nJ_0 and atomistic magnetic moment mu, where
   // n is the number of neighboring atoms
-  Oxs_OwnedPointer<Oxs_ScalarField> J_init, mu_init;
-  Oxs_MeshValue<OC_REAL8m> J, mu;
+  Oxs_OwnedPointer<Oxs_ScalarField> J1_init, J2_init;
+  Oxs_OwnedPointer<Oxs_ScalarField> mu1_init, mu2_init;
+  Oxs_MeshValue<OC_REAL8m> J1, J2;
+  Oxs_MeshValue<OC_REAL8m> mu1, mu2;
   // Currie temperature in Kelvin, calculated from J and mu
-  mutable Oxs_MeshValue<OC_REAL8m> Tc;
+  mutable Oxs_MeshValue<OC_REAL8m> Tc1, Tc2;
 
   // Members for calculating m_e, equilibrium spin polarization at
   // temperature T and chi_l, longitudinal susceptibility.
-  mutable Oxs_MeshValue<OC_REAL8m> m_e, chi_l;
+  mutable Oxs_MeshValue<OC_REAL8m> m_e1, m_e2;
+  mutable Oxs_MeshValue<OC_REAL8m> chi_l1, chi_l2;
   void CalculateLongField(const Oxs_SimState& state,
       Oxs_MeshValue<ThreeVector>& longfield) const;
   // Langevin function and its derivative
@@ -123,7 +129,8 @@ private:
   Oxs_MeshValue<OC_REAL8m> temperature; // in Kelvin
   Oxs_MeshValue<OC_REAL8m> kB_T;        // KBoltzmann*temperature
   // Make sure kB_T gets updated when temperature is changed.
-  OC_UINT4m iteration_Tcalculated;
+  OC_UINT4m iteration_hFluct1_calculated;
+  OC_UINT4m iteration_hFluct2_calculated;
   // Stores iteration for whic the stochastic field is calculated.
 
   OC_BOOL has_tempscript;
@@ -153,15 +160,14 @@ private:
   OC_BOOL has_uniform_seed;
 
   // constant part of the variance of the thermal field
-  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_t;
-  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_l;
-  void FillHFluctConst(const Oxs_Mesh* mesh);
+  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_t1, hFluctVarConst_t2;
+  Oxs_MeshValue<OC_REAL8m> hFluctVarConst_l1, hFluctVarConst_l2;
 
   // Current values of the thermal field
   // These values are stored in arrays because dm_dt is sometimes 
   // calculated more than once per iteration.
-  Oxs_MeshValue<ThreeVector> hFluct_t;  // transverse
-  Oxs_MeshValue<ThreeVector> hFluct_l;  // longitudinal
+  Oxs_MeshValue<ThreeVector> hFluct_t1, hFluct_t2;  // transverse
+  Oxs_MeshValue<ThreeVector> hFluct_l1, hFluct_l2;  // longitudinal
 
   void Calculate_dm_dt
   (const Oxs_SimState& state_,
@@ -173,8 +179,11 @@ private:
    OC_REAL8m& max_dm_dt_,
    OC_REAL8m& dE_dt_,
    OC_REAL8m& min_timestep_);
-  /// Imports: state_, mxH_, pE_pt
-  /// Exports: dm_dt_t_, dm_dt_l_, max_dm_dt_, dE_dt_
+  /// Imports: state_, mxH_, total_field_
+  /// Exports: pE_pt, dm_dt_t_, dm_dt_l_, max_dm_dt_, dE_dt_, min_timestep_
+  /// Call this with state_ for each sublattice. It internally judges tye 
+  /// type of the lattice and get references of the other sublattice if 
+  /// necessary.
 
   // =======================================================================
   // Outputs

@@ -13,13 +13,13 @@ Destination mmDisp1 mmDisp
 Destination mmDisp2 mmDisp
 Destination mmDisp3 mmDisp
 
-#Schedule DataTable Archiv Stage 1
-Schedule DataTable mmDataTable Step 1
-Schedule DataTable mmGraph Step 1
-Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 1
-Schedule YY_2LatTimeDriver::Magnetization1 mmDisp2 Step 1
-Schedule YY_2LatTimeDriver::Magnetization2 mmDisp3 Step 1
-#Schedule Oxs_TimeDriver::Spin mmDisp2 Step 1
+Schedule DataTable Archiv Step 10
+Schedule DataTable mmDataTable Step 10
+Schedule DataTable mmGraph Step 10
+Schedule YY_2LatTimeDriver::Magnetization mmDisp1 Step 10
+Schedule YY_2LatTimeDriver::Magnetization1 mmDisp2 Step 10
+Schedule YY_2LatTimeDriver::Magnetization2 mmDisp3 Step 10
+#Schedule Oxs_TimeDriver::Spin mmDisp2 Step 10
 
 
 Specify Oxs_BoxAtlas:atlas {
@@ -58,13 +58,29 @@ proc SlidingField { xcutoff xrel yrel zrel } {
    return 290
 }
 
-Specify Oxs_UniformScalarField:Ms {
+Specify Oxs_UniformScalarField:J1 {
+  value 1.47e-20
+}
+
+Specify Oxs_UniformScalarField:mu1 {
+  value 3e-23
+}
+
+Specify Oxs_UniformScalarField:Ms1 {
   value 500e3
 }
 
-Specify Oxs_UniformVectorField:m0 {
+Specify Oxs_UniformVectorField:m01 {
   norm 1
   vector {1 0 0}
+}
+
+Specify Oxs_UniformScalarField:J2 {
+  value 1.0e-20
+}
+
+Specify Oxs_UniformScalarField:mu2 {
+  value 2e-23
 }
 
 Specify Oxs_UniformScalarField:Ms2 {
@@ -79,10 +95,14 @@ Specify Oxs_UniformVectorField:m02 {
 #Specify YY_LLBEulerEvolve:evolver {
 Specify YY_2LatEulerEvolve:evolver {
   do_precess 1
-  gamma_LL 2.21e5
-  alpha_t 0.1
-  J { Oxs_UniformScalarField  {value 1.47e-20} }
-  atom_moment { Oxs_UniformScalarField {value 3e-23} }
+  gamma_LL1 2.21e5
+  gamma_LL2 2.21e5
+  alpha_t1 0.1
+  alpha_t2 0.1
+  J1 :J1
+  J2 :J2
+  atom_moment1 :mu1
+  atom_moment2 :mu2
 	fixed_timestep 5e-14
 	tempscript TempScript
   tempscript_args { stage }
@@ -97,10 +117,10 @@ Specify YY_2LatTimeDriver {
   mesh :mesh
   stopping_time { 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 2e-11 }
   stage_count 0
-  Ms :Ms
-  m0 :m0
-  Ms1 :Ms
-  m01 :m0
+  Ms :Ms1
+  m0 :m01
+  Ms1 :Ms1
+  m01 :m01
   Ms2 :Ms2
   m02 :m02
   normalize_aveM_output 0
