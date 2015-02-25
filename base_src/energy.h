@@ -134,6 +134,12 @@ class Oxs_Energy:public Oxs_Ext {
   // Note: The declaration of this friend function is farther down
   // in this file, but the implementation of Oxs_ComputeEnergies
   // is in the file chunkenergy.cc.
+
+  friend void YY_2LatComputeEnergies(const Oxs_SimState&,
+                                  Oxs_ComputeEnergyData&,
+                                  Oxs_ComputeEnergyData&,
+                                  const vector<Oxs_Energy*>&,
+                                  Oxs_ComputeEnergyExtraData& oceed);
 private:
   // Track count of number of times GetEnergy() has been
   // called in current problem run.
@@ -406,5 +412,11 @@ void Oxs_ComputeEnergies(const Oxs_SimState& state,
                          const vector<Oxs_Energy*>& energies,
                          Oxs_ComputeEnergyExtraData& oceed);
 
+// Added for 2-lattice simulation
+void YY_2LatComputeEnergies(const Oxs_SimState&,
+                            Oxs_ComputeEnergyData&,
+                            Oxs_ComputeEnergyData&,
+                            const vector<Oxs_Energy*>&,
+                            Oxs_ComputeEnergyExtraData& oceed);
 
 #endif // _OXS_ENERGY

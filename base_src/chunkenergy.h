@@ -115,6 +115,15 @@ class Oxs_ChunkEnergy:public Oxs_Energy {
                                   const vector<Oxs_Energy*>&,
                                   Oxs_ComputeEnergyExtraData& oceed);
   friend class Oxs_ComputeEnergiesChunkThread;
+
+  // Note: added the following function to calculate energy terms for
+  // 2-lattice simulations. The implementation is in yy_2lat_util.cc.
+  friend void YY_2LatComputeEnergies(const Oxs_SimState&,
+                                  Oxs_ComputeEnergyData&,
+                                  Oxs_ComputeEnergyData&,
+                                  const vector<Oxs_Energy*>&,
+                                  Oxs_ComputeEnergyExtraData& oceed);
+
 private:
   // Expressly disable default constructor, copy constructor and
   // assignment operator by declaring them without defining them.
