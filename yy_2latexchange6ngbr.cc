@@ -57,7 +57,8 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
   Oxs_Director* newdtr, // App director
   const char* argstr)   // MIF input block parameters
   : Oxs_ChunkEnergy(name,newdtr,argstr),
-    coef_size(0), coef(NULL), mesh_id(0)
+    coef_size(0), mesh_id(0),
+    coef1(NULL), coef2(NULL), coef12(NULL)
 {
   // Process arguments
   OXS_GET_INIT_EXT_OBJECT("atlas",Oxs_Atlas,atlas);
@@ -105,10 +106,16 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
 
   // Determine coef matrix fill type
   String typestr;
-  vector<String> params;
-  OC_REAL8m default_coef = 0.0;
-  OC_BOOL has_A = HasInitValue("A");
-  OC_BOOL has_lex = HasInitValue("lex");
+  vector<String> params1;
+  vector<String> params2;
+  vector<String> params12;
+  OC_REAL8m default_coef1 = 0.0;
+  OC_REAL8m default_coef2 = 0.0;
+  OC_REAL8m default_coef12 = 0.0;
+  OC_BOOL has_A = HasInitValue("A1")
+    || HasInitValue("A2") || HasInitValue("A12");
+  OC_BOOL has_lex = HasInitValue("lex1")
+    || HasInitValue("lex2") || HasInitValue("lex12");
   if(has_A && has_lex) {
     throw Oxs_ExtError(this,"Invalid exchange coefficient request:"
 			 " both A and lex specified; only one should"
@@ -116,44 +123,72 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
   } else if(has_lex) {
     excoeftype = LEX_TYPE;
     typestr = "lex";
-    default_coef = GetRealInitValue("default_lex",0.0);
-    FindRequiredInitValue("lex",params);
+    default_coef1 = GetRealInitValue("default_lex1",0.0);
+    default_coef2 = GetRealInitValue("default_lex2",0.0);
+    default_coef12 = GetRealInitValue("default_lex12",0.0);
+    FindRequiredInitValue("lex1",params1);
+    FindRequiredInitValue("lex2",params2);
+    FindRequiredInitValue("lex12",params12);
   } else {
+#ifdef YY_DEBUG
+    std::cout << "Read initialization parameters A1 A2 A12." << endl;
+#endif
     excoeftype = A_TYPE;
     typestr = "A";
-    default_coef = GetRealInitValue("default_A",0.0);
-    FindRequiredInitValue("A",params);
+    default_coef1 = GetRealInitValue("default_A1",0.0);
+    default_coef2 = GetRealInitValue("default_A2",0.0);
+    default_coef12 = GetRealInitValue("default_A12",0.0);
+#ifdef YY_DEBUG
+    std::cout << "Find required init values." << endl;
+#endif
+    FindRequiredInitValue("A1",params1);
+    FindRequiredInitValue("A2",params2);
+    FindRequiredInitValue("A12",params12);
+#ifdef YY_DEBUG
+    std::cout << "Found. Sizes are:" << endl;
+    std::cout<<"params1.size() = "<<params1.size()<<endl;
+    std::cout<<"params2.size() = "<<params2.size()<<endl;
+    std::cout<<"params12.size() = "<<params12.size()<<endl;
+#endif
   }
-  if(params.empty()) {
+  if( params1.empty() || params2.empty() || params12.empty() ) {
     String msg = String("Empty parameter list for key \"")
       + typestr + String("\"");
     throw Oxs_ExtError(this,msg);
   }
-  if(params.size()%3!=0) {
+  if( params1.size()%3!=0 || params2.size()%3!=0 || params12.size()%3!=0 ) {
       char buf[4096];
       Oc_Snprintf(buf,sizeof(buf),
 		  "Number of elements in %.80s sub-list must be"
 		  " divisible by 3"
 		  " (actual sub-list size: %u)",
-		  typestr.c_str(),(unsigned int)params.size());
+		  typestr.c_str(),(unsigned int)params1.size(), ", ",
+		  typestr.c_str(),(unsigned int)params2.size(), ", ",
+		  typestr.c_str(),(unsigned int)params12.size());
       throw Oxs_ExtError(this,buf);
   }
 
+#ifdef YY_DEBUG
+    std::cout << "Start allocation of A matrices." << endl;
+#endif
   // Allocate A matrix.  Because raw pointers are used, a memory leak
   // would occur if an uncaught exception occurred beyond this point.
   // So, we put the whole bit in a try-catch block.
+  // =======================================================================
+  // Lattice 1
+  // =======================================================================
   try {
-    coef = new OC_REAL8m*[coef_size];
-    coef[0] = NULL; // Safety, in case next alloc throws an exception
-    coef[0] = new OC_REAL8m[coef_size*coef_size];
+    coef1 = new OC_REAL8m*[coef_size];
+    coef1[0] = NULL; // Safety, in case next alloc throws an exception
+    coef1[0] = new OC_REAL8m[coef_size*coef_size];
     OC_INDEX ic;
-    for(ic=1;ic<coef_size;ic++) coef[ic] = coef[ic-1] + coef_size;
+    for(ic=1;ic<coef_size;ic++) coef1[ic] = coef1[ic-1] + coef_size;
 
     // Fill A matrix
-    for(ic=0;ic<coef_size*coef_size;ic++) coef[0][ic] = default_coef;
-    for(OC_INT4m ip=0;static_cast<size_t>(ip)<params.size();ip+=3) {
-      OC_INT4m i1 = atlas->GetRegionId(params[ip]);
-      OC_INT4m i2 = atlas->GetRegionId(params[ip+1]);
+    for(ic=0;ic<coef_size*coef_size;ic++) coef1[0][ic] = default_coef1;
+    for(OC_INT4m ip=0;static_cast<size_t>(ip)<params1.size();ip+=3) {
+      OC_INT4m i1 = atlas->GetRegionId(params1[ip]);
+      OC_INT4m i2 = atlas->GetRegionId(params1[ip+1]);
       if(i1<0 || i2<0) {
         // Unknown region(s) requested
         char buf[4096];
@@ -161,7 +196,7 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
         if(i1<0) {
           char item[96];  // Safety
           item[80]='\0';
-          Oc_Snprintf(item,sizeof(item),"%.82s",params[ip].c_str());
+          Oc_Snprintf(item,sizeof(item),"%.82s",params1[ip].c_str());
           if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
           Oc_Snprintf(buf,sizeof(buf),
                       "First entry in %.80s[%ld] sub-list, \"%.85s\","
@@ -173,7 +208,7 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
         if(i2<0) {
           char item[96];  // Safety
           item[80]='\0';
-          Oc_Snprintf(item,sizeof(item),"%.82s",params[ip+1].c_str());
+          Oc_Snprintf(item,sizeof(item),"%.82s",params1[ip+1].c_str());
           if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
           Oc_Snprintf(cptr,sizeof(buf)-(cptr-buf),
                       "Second entry in %.80s[%ld] sub-list, \"%.85s\","
@@ -192,11 +227,11 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
         throw Oxs_ExtError(this,msg);
       }
       OC_BOOL err;
-      OC_REAL8m coefpair = Nb_Atof(params[ip+2].c_str(),err);
+      OC_REAL8m coef1pair = Nb_Atof(params1[ip+2].c_str(),err);
       if(err) {
         char item[96];  // Safety
         item[80]='\0';
-        Oc_Snprintf(item,sizeof(item),"%.82s",params[ip+2].c_str());
+        Oc_Snprintf(item,sizeof(item),"%.82s",params1[ip+2].c_str());
         if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
         char buf[4096];
         Oc_Snprintf(buf,sizeof(buf),
@@ -205,10 +240,172 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
                     typestr.c_str(),long(ip/3),item);
         throw Oxs_ExtError(this,buf);
       }
-      coef[i1][i2]=coefpair;
-      coef[i2][i1]=coefpair; // coef should be symmetric
+      coef1[i1][i2]=coef1pair;
+      coef1[i2][i1]=coef1pair; // coef should be symmetric
     }
-    DeleteInitValue(typestr);
+    DeleteInitValue(typestr+"1");
+
+  }
+  catch(...) {
+    if(coef_size>0 && coef1!=NULL) { // Release coef memory
+      delete[] coef1[0]; delete[] coef1;
+      coef1 = NULL;
+      coef_size = 0; // Safety
+    }
+    throw;
+  }
+
+  // =======================================================================
+  // Lattice 2
+  // =======================================================================
+  try {
+    coef2 = new OC_REAL8m*[coef_size];
+    coef2[0] = NULL; // Safety, in case next alloc throws an exception
+    coef2[0] = new OC_REAL8m[coef_size*coef_size];
+    OC_INDEX ic;
+    for(ic=1;ic<coef_size;ic++) coef2[ic] = coef2[ic-1] + coef_size;
+
+    // Fill A matrix
+    for(ic=0;ic<coef_size*coef_size;ic++) coef2[0][ic] = default_coef2;
+    for(OC_INT4m ip=0;static_cast<size_t>(ip)<params2.size();ip+=3) {
+      OC_INT4m i1 = atlas->GetRegionId(params2[ip]);
+      OC_INT4m i2 = atlas->GetRegionId(params2[ip+1]);
+      if(i1<0 || i2<0) {
+        // Unknown region(s) requested
+        char buf[4096];
+        char* cptr=buf;
+        if(i1<0) {
+          char item[96];  // Safety
+          item[80]='\0';
+          Oc_Snprintf(item,sizeof(item),"%.82s",params2[ip].c_str());
+          if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+          Oc_Snprintf(buf,sizeof(buf),
+                      "First entry in %.80s[%ld] sub-list, \"%.85s\","
+                      " is not a known region in atlas \"%.1000s\".  ",
+                      typestr.c_str(),long(ip/3),item,
+                      atlas->InstanceName());
+          cptr += strlen(buf);
+        }
+        if(i2<0) {
+          char item[96];  // Safety
+          item[80]='\0';
+          Oc_Snprintf(item,sizeof(item),"%.82s",params2[ip+1].c_str());
+          if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+          Oc_Snprintf(cptr,sizeof(buf)-(cptr-buf),
+                      "Second entry in %.80s[%ld] sub-list, \"%.85s\","
+                      " is not a known region in atlas \"%.1000s\".  ",
+                      typestr.c_str(),long(ip/3),item,
+                      atlas->InstanceName());
+        }
+        String msg = String(buf);
+        msg += String("Known regions:");
+        vector<String> regions;
+        atlas->GetRegionList(regions);
+        for(OC_INT4m j=0;static_cast<size_t>(j)<regions.size();++j) {
+          msg += String(" \n");
+          msg += regions[j];
+        }
+        throw Oxs_ExtError(this,msg);
+      }
+      OC_BOOL err;
+      OC_REAL8m coef2pair = Nb_Atof(params2[ip+2].c_str(),err);
+      if(err) {
+        char item[96];  // Safety
+        item[80]='\0';
+        Oc_Snprintf(item,sizeof(item),"%.82s",params2[ip+2].c_str());
+        if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+        char buf[4096];
+        Oc_Snprintf(buf,sizeof(buf),
+                    "Third entry in %.80s[%ld] sub-list, \"%.85s\","
+                    " is not a valid floating point number.",
+                    typestr.c_str(),long(ip/3),item);
+        throw Oxs_ExtError(this,buf);
+      }
+      coef2[i1][i2]=coef2pair;
+      coef2[i2][i1]=coef2pair; // coef should be symmetric
+    }
+    DeleteInitValue(typestr+"2");
+
+  }
+  catch(...) {
+    if(coef_size>0 && coef2!=NULL) { // Release coef memory
+      delete[] coef2[0]; delete[] coef2;
+      coef2 = NULL;
+      coef_size = 0; // Safety
+    }
+    throw;
+  }
+
+  // =======================================================================
+  // Between lattice 1 and 2
+  // =======================================================================
+  try {
+    coef12 = new OC_REAL8m*[coef_size];
+    coef12[0] = NULL; // Safety, in case next alloc throws an exception
+    coef12[0] = new OC_REAL8m[coef_size*coef_size];
+    OC_INDEX ic;
+    for(ic=1;ic<coef_size;ic++) coef12[ic] = coef12[ic-1] + coef_size;
+
+    // Fill A matrix
+    for(ic=0;ic<coef_size*coef_size;ic++) coef12[0][ic] = default_coef12;
+    for(OC_INT4m ip=0;static_cast<size_t>(ip)<params12.size();ip+=3) {
+      OC_INT4m i1 = atlas->GetRegionId(params12[ip]);
+      OC_INT4m i2 = atlas->GetRegionId(params12[ip+1]);
+      if(i1<0 || i2<0) {
+        // Unknown region(s) requested
+        char buf[4096];
+        char* cptr=buf;
+        if(i1<0) {
+          char item[96];  // Safety
+          item[80]='\0';
+          Oc_Snprintf(item,sizeof(item),"%.82s",params12[ip].c_str());
+          if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+          Oc_Snprintf(buf,sizeof(buf),
+                      "First entry in %.80s[%ld] sub-list, \"%.85s\","
+                      " is not a known region in atlas \"%.1000s\".  ",
+                      typestr.c_str(),long(ip/3),item,
+                      atlas->InstanceName());
+          cptr += strlen(buf);
+        }
+        if(i2<0) {
+          char item[96];  // Safety
+          item[80]='\0';
+          Oc_Snprintf(item,sizeof(item),"%.82s",params12[ip+1].c_str());
+          if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+          Oc_Snprintf(cptr,sizeof(buf)-(cptr-buf),
+                      "Second entry in %.80s[%ld] sub-list, \"%.85s\","
+                      " is not a known region in atlas \"%.1000s\".  ",
+                      typestr.c_str(),long(ip/3),item,
+                      atlas->InstanceName());
+        }
+        String msg = String(buf);
+        msg += String("Known regions:");
+        vector<String> regions;
+        atlas->GetRegionList(regions);
+        for(OC_INT4m j=0;static_cast<size_t>(j)<regions.size();++j) {
+          msg += String(" \n");
+          msg += regions[j];
+        }
+        throw Oxs_ExtError(this,msg);
+      }
+      OC_BOOL err;
+      OC_REAL8m coef12pair = Nb_Atof(params12[ip+2].c_str(),err);
+      if(err) {
+        char item[96];  // Safety
+        item[80]='\0';
+        Oc_Snprintf(item,sizeof(item),"%.82s",params12[ip+2].c_str());
+        if(item[80]!='\0') strcpy(item+80,"..."); // Overflow
+        char buf[4096];
+        Oc_Snprintf(buf,sizeof(buf),
+                    "Third entry in %.80s[%ld] sub-list, \"%.85s\","
+                    " is not a valid floating point number.",
+                    typestr.c_str(),long(ip/3),item);
+        throw Oxs_ExtError(this,buf);
+      }
+      coef12[i1][i2]=coef12pair;
+      coef12[i2][i1]=coef12pair; // coef should be symmetric
+    }
+    DeleteInitValue(typestr+"12");
 
     VerifyAllInitArgsUsed();
 
@@ -224,21 +421,25 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
     run_maxspinangle_output.Register(director,0);
   }
   catch(...) {
-    if(coef_size>0 && coef!=NULL) { // Release coef memory
-      delete[] coef[0]; delete[] coef;
-      coef = NULL;
+    if(coef_size>0 && coef12!=NULL) { // Release coef memory
+      delete[] coef12[0]; delete[] coef12;
+      coef12 = NULL;
       coef_size = 0; // Safety
     }
     throw;
   }
 
-}
+} // End Constructor
 
 YY_2LatExchange6Ngbr::~YY_2LatExchange6Ngbr()
 {
-  if(coef_size>0 && coef!=NULL) {
-    delete[] coef[0];
-    delete[] coef;
+  if(coef_size>0 && coef1!=NULL) {
+    delete[] coef1[0];
+    delete[] coef1;
+    delete[] coef2[0];
+    delete[] coef2;
+    delete[] coef12[0];
+    delete[] coef12;
   }
 }
 
@@ -258,8 +459,35 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
  int threadnumber
  ) const
 {
-  const Oxs_MeshValue<ThreeVector>& spin = state.spin;
-  const Oxs_MeshValue<OC_REAL8m>& Ms_inverse = *(state.Ms_inverse);
+  // Depending on the lattice type, specify the coefficients to be used.
+  // Sucscript A corresponds to this lattice, B is the other.
+  const Oxs_MeshValue<ThreeVector> *spinA, *spinB;
+  OC_REAL8m** coefA;
+  OC_REAL8m** coefB;
+  const Oxs_MeshValue<OC_REAL8m> *MsA_inverse, *MsB_inverse;
+  switch(state.lattice_type) {
+  case Oxs_SimState::TOTAL:
+    throw Oxs_ExtError(this, "Programming error: CalcEnergyA was called"
+        " with a wrong type of simulation state with lattice_type ="
+        " TOTAL.");
+    break;
+  case Oxs_SimState::LATTICE1:
+    spinA = &(state.spin);
+    spinB = &(state.lattice2->spin);
+    MsA_inverse = state.Ms_inverse;
+    MsB_inverse = state.lattice2->Ms_inverse;
+    coefA = coef1;
+    coefB = coef2;
+    break;
+  case Oxs_SimState::LATTICE2:
+    spinA = &(state.spin);
+    spinB = &(state.lattice1->spin);
+    MsA_inverse = state.Ms_inverse;
+    MsB_inverse = state.lattice1->Ms_inverse;
+    coefA = coef2;
+    coefB = coef1;
+    break;
+  }
 
   // Downcast mesh
   const Oxs_CommonRectangularMesh* mesh
@@ -310,71 +538,84 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
     OC_INDEX xstop = xdim;
     if(xdim-x>node_stop-i) xstop = x + (node_stop-i);
     while(x<xstop) {
-      ThreeVector base = spin[i];
-      OC_REAL8m Msii = Ms_inverse[i];
-      if(0.0 == Msii) {
+      ThreeVector base = (*spinA)[i];
+      OC_REAL8m Msii1 = (*MsA_inverse)[i];
+      if(0.0 == Msii1) {
         if(ocedt.energy) (*ocedt.energy)[i] = 0.0;
         if(ocedt.H)      (*ocedt.H)[i].Set(0.,0.,0.);
         if(ocedt.mxH)    (*ocedt.mxH)[i].Set(0.,0.,0.);
         ++i;   ++x;
         continue;
       }
-      OC_REAL8m* Arow = coef[region_id[i]];
+      OC_REAL8m* ArowA = coefA[region_id[i]];
+      OC_REAL8m* ArowB = coefB[region_id[i]];
+      OC_REAL8m* ArowAB = coef12[region_id[i]];
       ThreeVector sum(0.,0.,0.);
+
+      // Exchange with the other sublattice
+      // TODO: Derive a right coefficient
+      //sum += ArowAB[region_id[i]]*COEF*(*spinB)[i];
+
       if(z>0 || zperiodic) {
         OC_INDEX j = i-xydim;
         if(z==0) j += xyzdim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Apair!=0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Apair*wgtz*diff;
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if(ApairA!=0 && (*MsA_inverse)[j]!=0.0) {
+          ThreeVector diffA = ((*spinA)[j] - base);
+          OC_REAL8m dot = diffA.MagSq();
+          sum += ApairA*wgtz*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
         }
       }
       if(y>0 || yperiodic) {
         OC_INDEX j = i-xdim;
         if(y==0) j += xydim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Apair!=0.0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Apair*wgty*diff;
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if(ApairA!=0.0 && (*MsA_inverse)[j]!=0.0) {
+          ThreeVector diffA = ((*spinA)[j] - base);
+          OC_REAL8m dot = diffA.MagSq();
+          sum += ApairA*wgty*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
         }
       }
       if(x>0 || xperiodic) {
         OC_INDEX j = i-1;
         if(x==0) j += xdim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Apair!=0.0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Apair*wgtx*diff;
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if(ApairA!=0.0 && (*MsA_inverse)[j]!=0.0) {
+          ThreeVector diffA = ((*spinA)[j] - base);
+          OC_REAL8m dot = diffA.MagSq();
+          sum += ApairA*wgtx*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
         }
       }
       if(x<xdim-1 || xperiodic) {
         OC_INDEX j = i+1;
         if(x==xdim-1) j -= xdim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgtx*(spin[j] - base);
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgtx*((*spinA)[j] - base);
       }
       if(y<ydim-1 || yperiodic) {
         OC_INDEX j = i+xdim;
         if(y==ydim-1) j -= xydim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgty*(spin[j] - base);
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgty*((*spinA)[j] - base);
       }
       if(z<zdim-1 || zperiodic) {
         OC_INDEX j = i+xydim;
         if(z==zdim-1) j -= xyzdim;
-        OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgtz*(spin[j]- base);
+        OC_REAL8m ApairA = ArowA[region_id[j]];
+        OC_REAL8m ApairB = ArowB[region_id[j]];
+        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgtz*((*spinA)[j]- base);
       }
 
       OC_REAL8m ei = base.x*sum.x + base.y*sum.y + base.z*sum.z;
-      OC_REAL8m hmult = hcoef*Msii;
+      OC_REAL8m hmult = hcoef*Msii1;
       sum.x *= hmult;  sum.y *= hmult;   sum.z *= hmult;
       OC_REAL8m tx = base.y*sum.z - base.z*sum.y;
       OC_REAL8m ty = base.z*sum.x - base.x*sum.z;

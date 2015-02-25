@@ -42,7 +42,9 @@ private:
   }  excoeftype;
 
   OC_INDEX coef_size;
-  OC_REAL8m** coef;
+  OC_REAL8m** coef1;
+  OC_REAL8m** coef2;
+  OC_REAL8m** coef12;
   mutable Oxs_Key<Oxs_Atlas> atlaskey;  
   Oxs_OwnedPointer<Oxs_Atlas> atlas;
   mutable Oxs_ThreadControl thread_control;
