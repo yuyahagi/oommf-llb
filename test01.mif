@@ -38,8 +38,11 @@ Specify Oxs_UZeeman {
   Hrange { { 1.5000 0 0 1.5000 0 0 37 } }
 }
 
-Specify Oxs_UniformExchange {
-  A 1e-11
+Specify YY_2LatExchange6Ngbr {
+  atlas :atlas
+  A {
+    atlas atlas 1e-11
+  }
 }
 
 #Specify Oxs_Demag {}
