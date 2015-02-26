@@ -22,6 +22,8 @@
 #ifndef _YY_2LAT_UTIL
 #define _YY_2LAT_UTIL
 
+#define KB OC_REAL8m(1.38062e-23)
+
 void YY_2LatComputeEnergies(
     const Oxs_SimState& state,  // the "total" lattice
     Oxs_ComputeEnergyData& oced1,

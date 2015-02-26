@@ -34,6 +34,7 @@
 #include "rectangularmesh.h"
 #include "energy.h"		// Needed to make MSVC++ 5 happy
 
+#include "yy_2lat_util.h"
 #include "yy_2latexchange6ngbr.h"
 
 OC_USE_STRING;
@@ -58,12 +59,39 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
   const char* argstr)   // MIF input block parameters
   : Oxs_ChunkEnergy(name,newdtr,argstr),
     coef_size(0), mesh_id(0),
-    coef1(NULL), coef2(NULL), coef12(NULL)
+    coef1(NULL), coef2(NULL), coef12(NULL),
+    last_stage_number(-1)
 {
   // Process arguments
   OXS_GET_INIT_EXT_OBJECT("atlas",Oxs_Atlas,atlas);
   atlaskey.Set(atlas.GetPtr());
   /// Dependency lock is held until *this is deleted.
+
+  if(HasInitValue("J1")) {
+    OXS_GET_INIT_EXT_OBJECT("J1",Oxs_ScalarField,J1_init);
+  } else {
+    throw Oxs_Ext::Error(this,"Exchange parameter J1 not specified.\n");
+  }
+
+  if(HasInitValue("J2")) {
+    OXS_GET_INIT_EXT_OBJECT("J2",Oxs_ScalarField,J2_init);
+  } else {
+    throw Oxs_Ext::Error(this,"Exchange parameter J2 not specified.\n");
+  }
+
+  if(HasInitValue("atom_moment1")) {
+    OXS_GET_INIT_EXT_OBJECT("atom_moment1",Oxs_ScalarField,mu1_init);
+  } else {
+    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment1"
+        " is not specified.");
+  }
+
+  if(HasInitValue("atom_moment2")) {
+    OXS_GET_INIT_EXT_OBJECT("atom_moment2",Oxs_ScalarField,mu2_init);
+  } else {
+    throw Oxs_Ext::Error(this, "Atomic magnetic moment atom_moment2"
+        " is not specified.");
+  }
 
   // Determine number of regions, and check that the
   // count lies within the allowed range.
@@ -447,6 +475,11 @@ OC_BOOL YY_2LatExchange6Ngbr::Init()
 {
   mesh_id = 0;
   region_id.Release();
+  J1.Release(); J2.Release();
+  mu1.Release(); mu2.Release();
+  Tc1.Release(); Tc2.Release();
+  m_e1.Release(); m_e2.Release();
+  chi_l1.Release(); chi_l2.Release();
   return Oxs_Energy::Init();
 }
 
@@ -645,11 +678,64 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
 
 
 void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
-(const Oxs_SimState& /* state */,
+(const Oxs_SimState& state, // One of the sublattice states
  Oxs_ComputeEnergyDataThreaded& /* ocedt */,
  Oxs_ComputeEnergyDataThreadedAux& /* ocedtaux */,
  int number_of_threads) const
 {
+  // Update temperature-related parameters at the new stage
+  if(last_stage_number==-1) { // First go
+    last_stage_number = state.stage_number;
+
+    const Oxs_Mesh* mesh = state.mesh;
+    const OC_INDEX size = mesh->Size();
+    Tc1.AdjustSize(mesh);
+    Tc2.AdjustSize(mesh);
+    J1_init->FillMeshValue(mesh,J1);
+    J2_init->FillMeshValue(mesh,J2);
+    mu1_init->FillMeshValue(mesh,mu1);
+    mu2_init->FillMeshValue(mesh,mu2);
+    for(OC_INDEX i=0; i<size; i++) {
+      Tc1[i] = J1[i]/(3*KB);
+      Tc2[i] = J2[i]/(3*KB);
+    }
+    m_e1.AdjustSize(mesh);
+    m_e2.AdjustSize(mesh);
+    chi_l1.AdjustSize(mesh);
+    chi_l2.AdjustSize(mesh);
+
+    // Set pointers for the temperature-dependent parameters in states.
+    switch(state.lattice_type) {
+    case Oxs_SimState::LATTICE1:
+      state.m_e = &m_e1;
+      state.lattice2->m_e = &m_e2;
+      state.chi_l = &chi_l1;
+      state.lattice2->chi_l = &chi_l2;
+      state.Tc = &Tc1;
+      state.lattice2->Tc = &Tc2;
+      break;
+    case Oxs_SimState::LATTICE2:
+      state.lattice1->m_e = &m_e1;
+      state.m_e = &m_e2;
+      state.lattice1->chi_l = &chi_l1;
+      state.chi_l = &chi_l2;
+      state.lattice1->Tc = &Tc1;
+      state.Tc = &Tc2;
+      break;
+    default:
+      // Program should not reach here.
+      break;
+    }
+
+    Update_m_e_chi_l(*(state.total_lattice), 1e-4);
+  }
+
+  if(state.stage_number != last_stage_number) { // New stage
+    last_stage_number = state.stage_number;
+    Update_m_e_chi_l(*(state.total_lattice), 1e-4);
+  }
+
+
   if(maxdot.size() != (vector<OC_REAL8m>::size_type)number_of_threads) {
     maxdot.resize(number_of_threads);
   }
@@ -914,6 +1000,83 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunk
   } else {
     CalcEnergyA(state,ocedt,ocedtaux,node_start,node_stop,threadnumber);
   }
+}
+
+void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
+    const Oxs_SimState& state,  // Total lattice state
+    OC_REAL8m tol_in = 1e-4) const
+{
+  // Solve for the equilibrium spin polarization m_e using the Newton's
+  // method. Returns 0 when A <= 0 or A >= 1/3.
+  const OC_REAL8m size = state.mesh->Size();
+  const OC_REAL8m tol = fabs(tol_in);
+
+  // Lattice 1
+  for(OC_INDEX i=0; i<size; i++) {
+    const OC_REAL8m kB_T = KB*(*(state.lattice1->T))[i];
+    OC_REAL8m A = kB_T/J1[i];
+    if(A <= 0 || A >= 1./3.) {
+      m_e1[i] = 0;
+      chi_l1[i] = MU0*mu1[i]/J1[i];
+    } else {
+      // Solve for equilibrium spin polarization m_e using Newton's method
+      OC_REAL8m x = 1.0/A;
+      OC_REAL8m y = Langevin(x)-A*x;
+      OC_REAL8m dy = LangevinDeriv(x)-A;
+      while(fabs(y)>tol) {
+        x -= y/dy;
+        y = Langevin(x)-A*x;
+        dy = LangevinDeriv(x)-A;
+      }
+      m_e1[i] = A*x;
+
+      // Calculate longitudinal susceptibility chi_l
+      OC_REAL8m dL = LangevinDeriv(J1[i]*m_e1[i]/(kB_T));
+      OC_REAL8m beta = 1/(kB_T);
+
+      chi_l1[i] = MU0*mu1[i]*beta*dL/(1-beta*J1[i]*dL);
+    }
+  }
+
+  // Lattice 2
+  for(OC_INDEX i=0; i<size; i++) {
+    const OC_REAL8m kB_T = KB*(*(state.lattice2->T))[i];
+    OC_REAL8m A = kB_T/J2[i];
+    if(A <= 0 || A >= 1./3.) {
+      m_e2[i] = 0;
+      chi_l2[i] = MU0*mu2[i]/J2[i];
+    } else {
+      // Solve for equilibrium spin polarization m_e using Newton's method
+      OC_REAL8m x = 1.0/A;
+      OC_REAL8m y = Langevin(x)-A*x;
+      OC_REAL8m dy = LangevinDeriv(x)-A;
+      while(fabs(y)>tol) {
+        x -= y/dy;
+        y = Langevin(x)-A*x;
+        dy = LangevinDeriv(x)-A;
+      }
+      m_e2[i] = A*x;
+
+      // Calculate longitudinal susceptibility chi_l
+      OC_REAL8m dL = LangevinDeriv(J2[i]*m_e2[i]/(kB_T));
+      OC_REAL8m beta = 1/(kB_T);
+
+      chi_l2[i] = MU0*mu2[i]*beta*dL/(1-beta*J2[i]*dL);
+    }
+  }
+}
+
+OC_REAL8m YY_2LatExchange6Ngbr::Langevin(OC_REAL8m x) const
+{
+  OC_REAL8m temp = exp(2*x)+1;
+  temp /= exp(2*x)-1; // temp == coth(x);
+  return temp-1/x;
+}
+
+OC_REAL8m YY_2LatExchange6Ngbr::LangevinDeriv(OC_REAL8m x) const
+{
+  OC_REAL8m temp = sinh(x);
+  return -1.0/(temp*temp)+1.0/(x*x);
 }
 
 void YY_2LatExchange6Ngbr::UpdateDerivedOutputs(const Oxs_SimState& state)
