@@ -23,6 +23,7 @@ Oxs_SimState::Oxs_SimState()
     last_timestep(0.),
     mesh(NULL),Ms(NULL),Ms_inverse(NULL),
     Ms0(NULL),Ms0_inverse(NULL),
+    T(NULL),Tc(NULL),m_e(NULL),chi_l(NULL),
     lattice_type(TOTAL), total_lattice(NULL),
     lattice1(NULL), lattice2(NULL),
     stage_done(UNKNOWN), run_done(UNKNOWN)
@@ -58,6 +59,14 @@ void Oxs_SimState::Reset()
   Ms_inverse=NULL;
   Ms0=NULL;
   Ms0_inverse=NULL;
+  T=NULL;
+  Tc=NULL;
+  m_e=NULL;
+  chi_l=NULL;
+  lattice_type=TOTAL;
+  total_lattice=NULL;
+  lattice1=NULL;
+  lattice2=NULL;
 
   stage_done=UNKNOWN;
   run_done=UNKNOWN;

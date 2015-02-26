@@ -590,6 +590,8 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
         // Since the instances of next_state may have been used before,
         // their lattice_type and pointers may be wrong. Set them again.
         { 
+          const Oxs_SimState& cstate1 = current_state1.GetReadReference();
+          const Oxs_SimState& cstate2 = current_state2.GetReadReference();
           Oxs_SimState& nstate = next_state.GetWriteReference();
           Oxs_SimState& nstate1 = next_state1.GetWriteReference();
           Oxs_SimState& nstate2 = next_state2.GetWriteReference();
@@ -605,6 +607,14 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
           nstate2.total_lattice = &nstate;
           nstate2.lattice1 = &nstate1;
           nstate2.lattice2 = NULL;
+          nstate1.T = cstate1.T;
+          nstate2.T = cstate2.T;
+          nstate1.Tc = cstate1.Tc;
+          nstate2.Tc = cstate2.Tc;
+          nstate1.m_e = cstate1.m_e;
+          nstate2.m_e = cstate2.m_e;
+          nstate1.chi_l = cstate1.chi_l;
+          nstate2.chi_l = cstate2.chi_l;
         }
 #if REPORT_TIME
         driversteptime.Start();
