@@ -1149,6 +1149,16 @@ void Oxs_Driver::Run(vector<OxsRunEvent>& results,
         //   locks do not accumulate.  However, it is the
         //   responsibility of Step or its callees to release
         //   the write lock, once next_state is fully populated.
+
+        // Reset pointers to temperature and related parameters
+        { 
+          const Oxs_SimState& cstate = current_state.GetReadReference();
+          Oxs_SimState& nstate = next_state.GetWriteReference();
+          nstate.T = cstate.T;
+          nstate.Tc = cstate.Tc;
+          nstate.m_e = cstate.m_e;
+          nstate.chi_l = cstate.chi_l;
+        }
 #if REPORT_TIME
         driversteptime.Start();
 #endif // REPORT_TIME

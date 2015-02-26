@@ -340,6 +340,12 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(state_);
     UpdateMeshArrays(state_);
+
+    // Set pointers for the temperature-dependent parameters in states.
+    state_.T = &temperature;
+    state_.Tc = &Tc;
+    state_.m_e = &m_e;
+    state_.chi_l = &chi_l;
   }
 
   if (use_stochastic && iteration_now > iteration_Tcalculated) {

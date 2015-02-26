@@ -358,6 +358,12 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
   dm_dt_l_.AdjustSize(mesh_);
   OC_INDEX i;
 
+  if(state_.lattice_type==Oxs_SimState::TOTAL) {
+    throw Oxs_ExtError(this, "PROGRAMMING ERROR: YY_2LatEulerEvolve::"
+        "Calculate_dm_dt() is called with a wrong type of simulation"
+        " state.");
+  }
+
   iteration_now++;
   // if not done, hFluct for first step may be calculated too often
   
@@ -423,6 +429,33 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
     // Update stage-dependent temperature and temperature-dependent parameters
     UpdateStageTemperature(*(state_.total_lattice));
     UpdateMeshArrays(*(state_.total_lattice));
+
+    // Set pointers for the temperature-dependent parameters in states.
+    switch(state_.lattice_type) {
+    case Oxs_SimState::LATTICE1:
+      state_.T = &temperature;
+      state_.lattice2->T = &temperature;
+      state_.Tc = &Tc1;
+      state_.lattice2->Tc = &Tc2;
+      state_.m_e = &m_e1;
+      state_.lattice2->m_e = &m_e2;
+      state_.chi_l = &chi_l1;
+      state_.lattice2->chi_l = &chi_l2;
+      break;
+    case Oxs_SimState::LATTICE2:
+      state_.lattice1->T = &temperature;
+      state_.T = &temperature;
+      state_.lattice1->Tc = &Tc1;
+      state_.Tc = &Tc2;
+      state_.lattice1->m_e = &m_e1;
+      state_.m_e = &m_e2;
+      state_.lattice1->chi_l = &chi_l1;
+      state_.chi_l = &chi_l2;
+      break;
+    default:
+      // Program should not reach here.
+      break;
+    }
   }
 
   // Judge the type of lattice (sublattice1 or 2) and use corresponding
@@ -467,8 +500,8 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
     iteration_hFluct_calculated = &iteration_hFluct2_calculated;
     break;
   default:
-    throw Oxs_ExtError(this, "PROGRAMMING ERROR: YY_2LatEulerEvolve::Calculate_dm_dt()"
-        " is called with a wrong type of simulation state.\n");
+    // Program should not reach here.
+    break;
   }
 
   if (use_stochastic && iteration_now > *iteration_hFluct_calculated) {

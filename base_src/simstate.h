@@ -88,6 +88,14 @@ public:
 
   Oxs_MeshValue<ThreeVector> spin;
 
+  // For calculation of the temperature-dependent parameters (e.g., 
+  // anisotropy and exchange), include a pointer to temperature and related
+  // parameters.
+  mutable Oxs_MeshValue<OC_REAL8m> const* T;
+  mutable Oxs_MeshValue<OC_REAL8m> const* Tc;
+  mutable Oxs_MeshValue<OC_REAL8m> const* m_e;
+  mutable Oxs_MeshValue<OC_REAL8m> const* chi_l;
+
   // For 2 lattice simulation, pointer to the other sublattice
   enum LatticeType { TOTAL, LATTICE1, LATTICE2 } lattice_type;
   // Default: TOTAL for standard simulations
