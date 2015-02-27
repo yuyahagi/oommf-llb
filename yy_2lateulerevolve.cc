@@ -507,28 +507,19 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 
       // Longitudinal terms
       OC_REAL8m temp = spin_[i]*total_field_[i];
-      if(temperature[i] != 0) {
-        OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
-        OC_REAL8m cell_msq = cell_m*cell_m;
-        if(temperature[i] < (*Tc)[i]) {
-          temp += 0.5/(*chi_l)[i]
-            *(1-cell_msq/((*m_e)[i]*(*m_e)[i]))*cell_m;
-        } else {
-          temp += -1.0/(*chi_l)[i]
-            *(1+0.6*((*Tc)[i]/(temperature[i]-(*Tc)[i]))*cell_msq)*cell_m;
-        }
-        temp *= cell_gamma*cell_alpha_l*Ms0_[i]*Ms_inverse_[i];
-        scratch_l = temp*spin_[i];
-        if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
-          // scratch_l || spin_[i]
-          scratch_l.MakeUnit();
-        }
-        dm_dt_l_[i] += scratch_l;
+      OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
+      OC_REAL8m cell_msq = cell_m*cell_m;
+      temp *= -cell_gamma*cell_alpha_l;
+      scratch_l = temp*spin_[i];
+      //if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
+      //  // scratch_l || spin_[i]
+      //  scratch_l.MakeUnit();
+      //}
+      dm_dt_l_[i] += scratch_l;
 
-        if(use_stochastic) {
-          // Longitudinal stochastic field parallel to spin
-          dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
-        }
+      if(temperature[i] != 0 && use_stochastic) {
+        // Longitudinal stochastic field parallel to spin
+        dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
       }
     }
   }
