@@ -787,7 +787,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     // Notes: This changes Ms in cstate too. Watch out.
     OC_REAL8m Ms_temp = wMs1[i];
     wMs1[i] = sqrt(tempspin.MagSq())*Ms_temp;
-    if(wMs[i] <= 0.0) {
+    if(wMs1[i] <= 0.0) {
       // If spin overshoots to the opposite direction with stochastic kick,
       // keep Ms positive and flip spin direction.
       wMs1[i] *= -1;
@@ -1054,8 +1054,8 @@ void YY_2LatEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
   OC_INDEX i;
 
   for(i=0;i<size;i++) {
-    alpha_t1[i] = alpha_t10[i]*(1-temperature[i]/(3*Tc1[i]));
-    alpha_t2[i] = alpha_t20[i]*(1-temperature[i]/(3*Tc2[i]));
+    alpha_t1[i] = fabs( alpha_t10[i]*(1-temperature[i]/(3*Tc1[i])) );
+    alpha_t2[i] = fabs( alpha_t20[i]*(1-temperature[i]/(3*Tc2[i])) );
     if(temperature[i] > Tc1[i]) {
       alpha_l1[i] = alpha_t1[i];
     } else {
