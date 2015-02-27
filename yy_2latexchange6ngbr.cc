@@ -67,16 +67,28 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
   atlaskey.Set(atlas.GetPtr());
   /// Dependency lock is held until *this is deleted.
 
-  if(HasInitValue("J1")) {
-    OXS_GET_INIT_EXT_OBJECT("J1",Oxs_ScalarField,J1_init);
+  if(HasInitValue("J01")) {
+    OXS_GET_INIT_EXT_OBJECT("J01",Oxs_ScalarField,J01_init);
   } else {
-    throw Oxs_Ext::Error(this,"Exchange parameter J1 not specified.\n");
+    throw Oxs_Ext::Error(this,"Exchange parameter J01 not specified.\n");
   }
 
-  if(HasInitValue("J2")) {
-    OXS_GET_INIT_EXT_OBJECT("J2",Oxs_ScalarField,J2_init);
+  if(HasInitValue("J02")) {
+    OXS_GET_INIT_EXT_OBJECT("J02",Oxs_ScalarField,J02_init);
   } else {
-    throw Oxs_Ext::Error(this,"Exchange parameter J2 not specified.\n");
+    throw Oxs_Ext::Error(this,"Exchange parameter J02 not specified.\n");
+  }
+
+  if(HasInitValue("J012")) {
+    OXS_GET_INIT_EXT_OBJECT("J012",Oxs_ScalarField,J012_init);
+  } else {
+    throw Oxs_Ext::Error(this,"Exchange parameter J012 not specified.\n");
+  }
+
+  if(HasInitValue("J021")) {
+    OXS_GET_INIT_EXT_OBJECT("J021",Oxs_ScalarField,J021_init);
+  } else {
+    throw Oxs_Ext::Error(this,"Exchange parameter J021 not specified.\n");
   }
 
   if(HasInitValue("atom_moment1")) {
@@ -475,11 +487,13 @@ OC_BOOL YY_2LatExchange6Ngbr::Init()
 {
   mesh_id = 0;
   region_id.Release();
-  J1.Release(); J2.Release();
+  J01.Release(); J02.Release();
+  J012.Release(); J021.Release();
   mu1.Release(); mu2.Release();
   Tc1.Release(); Tc2.Release();
   m_e1.Release(); m_e2.Release();
   chi_l1.Release(); chi_l2.Release();
+  G1.Release(); G2.Release();
   return Oxs_Energy::Init();
 }
 
@@ -691,18 +705,22 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
     const OC_INDEX size = mesh->Size();
     Tc1.AdjustSize(mesh);
     Tc2.AdjustSize(mesh);
-    J1_init->FillMeshValue(mesh,J1);
-    J2_init->FillMeshValue(mesh,J2);
+    J01_init->FillMeshValue(mesh,J01);
+    J02_init->FillMeshValue(mesh,J02);
+    J012_init->FillMeshValue(mesh,J012);
+    J021_init->FillMeshValue(mesh,J021);
     mu1_init->FillMeshValue(mesh,mu1);
     mu2_init->FillMeshValue(mesh,mu2);
     for(OC_INDEX i=0; i<size; i++) {
-      Tc1[i] = J1[i]/(3*KB);
-      Tc2[i] = J2[i]/(3*KB);
+      Tc1[i] = J01[i]/(3*KB);
+      Tc2[i] = J02[i]/(3*KB);
     }
     m_e1.AdjustSize(mesh);
     m_e2.AdjustSize(mesh);
     chi_l1.AdjustSize(mesh);
     chi_l2.AdjustSize(mesh);
+    G1.AdjustSize(mesh);
+    G2.AdjustSize(mesh);
 
     // Set pointers for the temperature-dependent parameters in states.
     switch(state.lattice_type) {
@@ -1006,63 +1024,85 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
     const Oxs_SimState& state,  // Total lattice state
     OC_REAL8m tol_in = 1e-4) const
 {
-  // Solve for the equilibrium spin polarization m_e using the Newton's
-  // method. Returns 0 when A <= 0 or A >= 1/3.
+  // Solve for the equilibrium spin polarization m_e using 2 variable
+  // Newton method.
   const OC_REAL8m size = state.mesh->Size();
   const OC_REAL8m tol = fabs(tol_in);
 
-  // Lattice 1
+  OC_REAL8m A11, A12, A21, A22;
+  OC_REAL8m x1, x2, y1, y2;
+  OC_REAL8m dL1, dL2;
+  OC_REAL8m J11, J12, J21, J22, det, deti;
   for(OC_INDEX i=0; i<size; i++) {
     const OC_REAL8m kB_T = KB*(*(state.lattice1->T))[i];
-    OC_REAL8m A = kB_T/J1[i];
-    if(A <= 0 || A >= 1./3.) {
-      m_e1[i] = 0;
-      chi_l1[i] = MU0*mu1[i]/J1[i];
-    } else {
-      // Solve for equilibrium spin polarization m_e using Newton's method
-      OC_REAL8m x = 1.0/A;
-      OC_REAL8m y = Langevin(x)-A*x;
-      OC_REAL8m dy = LangevinDeriv(x)-A;
-      while(fabs(y)>tol) {
-        x -= y/dy;
-        y = Langevin(x)-A*x;
-        dy = LangevinDeriv(x)-A;
-      }
-      m_e1[i] = A*x;
+    if(kB_T == 0) {
+      m_e1[i]=1.0;
+      m_e2[i]=1.0;
 
-      // Calculate longitudinal susceptibility chi_l
-      OC_REAL8m dL = LangevinDeriv(J1[i]*m_e1[i]/(kB_T));
-      OC_REAL8m beta = 1/(kB_T);
-
-      chi_l1[i] = MU0*mu1[i]*beta*dL/(1-beta*J1[i]*dL);
+      dL1 = LangevinDeriv(A11+A12);
+      dL2 = LangevinDeriv(A21+A22);
+      G1[i] = ( fabs(J021[i])*fabs(J012[i])*dL1*dL2
+            +(mu1[i]/mu2[i])*fabs(J021[i])*dL1*(-J02[i]*dL2) )
+        /( (J01[i]*dL1*J02[i]*dL2)
+            -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
+      G2[i] = ( fabs(J021[i])*fabs(J012[i])*dL1*dL2
+            +(mu2[i]/mu1[i])*fabs(J012[i])*dL2*(-J01[i]*dL1) )
+        /( (J01[i]*dL1*J02[i]*dL2)
+            -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
+      chi_l1[i] = MU0*mu1[i]/fabs(J021[i])*G1[i];
+      chi_l2[i] = MU0*mu1[i]/fabs(J021[i])*G2[i];
+      continue;
     }
-  }
+    const OC_REAL8m beta = 1.0/kB_T;
+    A11 = beta*J01[i];
+    A12 = beta*fabs(J012[i]);
+    A21 = beta*fabs(J021[i]);
+    A22 = beta*J02[i];
 
-  // Lattice 2
-  for(OC_INDEX i=0; i<size; i++) {
-    const OC_REAL8m kB_T = KB*(*(state.lattice2->T))[i];
-    OC_REAL8m A = kB_T/J2[i];
-    if(A <= 0 || A >= 1./3.) {
-      m_e2[i] = 0;
-      chi_l2[i] = MU0*mu2[i]/J2[i];
-    } else {
-      // Solve for equilibrium spin polarization m_e using Newton's method
-      OC_REAL8m x = 1.0/A;
-      OC_REAL8m y = Langevin(x)-A*x;
-      OC_REAL8m dy = LangevinDeriv(x)-A;
-      while(fabs(y)>tol) {
-        x -= y/dy;
-        y = Langevin(x)-A*x;
-        dy = LangevinDeriv(x)-A;
+    x1 = 0.8; x2 = 0.8;
+    y1 = Langevin(A11*x1+A12*x2)-x1;
+    y2 = Langevin(A21*x1+A22*x2)-x2;
+    do {
+      dL1 = LangevinDeriv(A11*x1+A12*x2);
+      dL2 = LangevinDeriv(A21*x1+A22*x2);
+      // Jacobian
+      J11 = A11*dL1-1;
+      J12 = A12*dL1;
+      J21 = A21*dL2;
+      J22 = A22*dL2-1;
+      det = J11*J22-J12*J21;
+      if(det == 0.0) { 
+        m_e1[i]=x1;
+        m_e2[i]=x2;
+
+        dL1 = LangevinDeriv(A11*x1+A12*x2);
+        dL2 = LangevinDeriv(A21*x1+A22*x2);
+        G1[i] = ( fabs(A21*A12)*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
+          /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
+        G2[i] = ( fabs(A21*A12)*dL1*dL2 + (mu2[i]/mu1[i])*fabs(A12)*dL2*(1-A11*dL1) )
+          /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
+        chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
+        chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
+        continue;
       }
-      m_e2[i] = A*x;
+      deti = 1.0/det;
+      x1 -= deti*(J22*y1-J12*y2);
+      x2 -= deti*(-J21*y1+J11*y2);
+      y1 = Langevin(A11*x1+A12*x2)-x1;
+      y2 = Langevin(A21*x1+A22*x2)-x2;
+    } while( (fabs(y1)>tol || fabs(y2)>tol) &&
+        (fabs(x1)>tol || fabs(x2)>tol) );
+    m_e1[i] = x1>0 ? x1 : 0.0;
+    m_e2[i] = x1>0 ? x2 : 0.0;
 
-      // Calculate longitudinal susceptibility chi_l
-      OC_REAL8m dL = LangevinDeriv(J2[i]*m_e2[i]/(kB_T));
-      OC_REAL8m beta = 1/(kB_T);
-
-      chi_l2[i] = MU0*mu2[i]*beta*dL/(1-beta*J2[i]*dL);
-    }
+    dL1 = LangevinDeriv(A11*x1+A12*x2);
+    dL2 = LangevinDeriv(A21*x1+A22*x2);
+    G1[i] = ( fabs(A21*A12)*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
+      /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
+    G2[i] = ( fabs(A21*A12)*dL1*dL2 + (mu2[i]/mu1[i])*fabs(A12)*dL2*(1-A11*dL1) )
+      /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
+    chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
+    chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
   }
 }
 

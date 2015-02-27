@@ -70,9 +70,11 @@ private:
   // Parameters used for longitudinal susceptibility
   // Exchange parameter J = nJ_0 and atomistic magnetic moment mu, where
   // n is the number of neighboring atoms
-  Oxs_OwnedPointer<Oxs_ScalarField> J1_init, J2_init;
+  Oxs_OwnedPointer<Oxs_ScalarField> J01_init, J02_init;
+  Oxs_OwnedPointer<Oxs_ScalarField> J012_init, J021_init;
   Oxs_OwnedPointer<Oxs_ScalarField> mu1_init, mu2_init;
-  mutable Oxs_MeshValue<OC_REAL8m> J1, J2;
+  mutable Oxs_MeshValue<OC_REAL8m> J01, J02;
+  mutable Oxs_MeshValue<OC_REAL8m> J012, J021;
   mutable Oxs_MeshValue<OC_REAL8m> mu1, mu2;
   // Currie temperature in Kelvin, calculated from J and mu
   mutable Oxs_MeshValue<OC_REAL8m> Tc1, Tc2;
@@ -89,6 +91,7 @@ private:
   void Update_m_e_chi_l(const Oxs_SimState& state) const {
     return Update_m_e_chi_l(state, DEFAULT_M_E_TOL);
   }
+  mutable Oxs_MeshValue<OC_REAL8m> G1, G2;
 
   // Supplied outputs, in addition to those provided by Oxs_Energy.
   Oxs_ScalarOutput<YY_2LatExchange6Ngbr> maxspinangle_output;
