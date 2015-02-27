@@ -494,6 +494,8 @@ OC_BOOL YY_2LatExchange6Ngbr::Init()
   m_e1.Release(); m_e2.Release();
   chi_l1.Release(); chi_l2.Release();
   G1.Release(); G2.Release();
+  Lambdai11.Release(); Lambdai12.Release();
+  Lambdai21.Release(); Lambdai22.Release();
   return Oxs_Energy::Init();
 }
 
@@ -511,7 +513,14 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
   const Oxs_MeshValue<ThreeVector> *spinA, *spinB;
   OC_REAL8m** coefA;
   OC_REAL8m** coefB;
+  const Oxs_MeshValue<OC_REAL8m> *MsA, *MsB;
   const Oxs_MeshValue<OC_REAL8m> *MsA_inverse, *MsB_inverse;
+  const Oxs_MeshValue<OC_REAL8m> *Ms0A_inverse, *Ms0B_inverse;
+  const Oxs_MeshValue<OC_REAL8m> *J0AB;
+  const Oxs_MeshValue<OC_REAL8m> *muA, *muB;
+  const Oxs_MeshValue<OC_REAL8m> *m_eA, *m_eB;
+  const Oxs_MeshValue<OC_REAL8m> *chi_lA, *chi_lB;
+  const Oxs_MeshValue<OC_REAL8m> *GA, *GB;
   switch(state.lattice_type) {
   case Oxs_SimState::TOTAL:
     throw Oxs_ExtError(this, "Programming error: CalcEnergyA was called"
@@ -521,18 +530,35 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
   case Oxs_SimState::LATTICE1:
     spinA = &(state.spin);
     spinB = &(state.lattice2->spin);
+    MsA = state.Ms;
+    MsB = state.lattice2->Ms;
     MsA_inverse = state.Ms_inverse;
     MsB_inverse = state.lattice2->Ms_inverse;
-    coefA = coef1;
-    coefB = coef2;
+    Ms0A_inverse = state.Ms0_inverse;
+    Ms0B_inverse = state.lattice2->Ms0_inverse;
+    coefA = coef1; coefB = coef2;
+    muA = &mu1; muB = &mu2;
+    J0AB = &J012;
+    m_eA = &m_e1; m_eB = &m_e2;
+    chi_lA = &chi_l1; chi_lB = &chi_l2;
+    GA = &G1; GB = &G2;
     break;
   case Oxs_SimState::LATTICE2:
     spinA = &(state.spin);
     spinB = &(state.lattice1->spin);
+    MsA = state.Ms;
+    MsB = state.lattice1->Ms;
     MsA_inverse = state.Ms_inverse;
     MsB_inverse = state.lattice1->Ms_inverse;
+    Ms0A_inverse = state.Ms0_inverse;
+    Ms0B_inverse = state.lattice1->Ms0_inverse;
     coefA = coef2;
     coefB = coef1;
+    muA = &mu2; muB = &mu1;
+    J0AB = &J021;
+    m_eA = &m_e2; m_eB = &m_e1;
+    chi_lA = &chi_l2; chi_lB = &chi_l1;
+    GA = &G2; GB = &G1;
     break;
   }
 
@@ -600,8 +626,24 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum(0.,0.,0.);
 
       // Exchange with the other sublattice
-      // TODO: Derive a right coefficient
-      //sum += ArowAB[region_id[i]]*COEF*(*spinB)[i];
+      OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
+      OC_REAL8m LambdaiAB = fabs((*m_eA)[i]*(*m_eB)[i])
+        /(*m_eA)[i]*(*m_eA)[i]*fabs((*J0AB)[i])/(*muA)[i];
+      ThreeVector PB = (*spinA)[i]^(*spinB)[i];
+      PB ^= (*spinA)[i];
+      PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
+      ThreeVector tauB = (*spinA)[i];
+      tauB *= (*spinB)[i]*(*spinA)[i];  // Dot product
+      tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // tauB = nA(mB dot nA)
+      OC_REAL8m taueBsq = (*m_eA)[i]*(*m_eB)[i];
+      taueBsq = taueBsq*taueBsq;
+      taueBsq /= (*m_eA)[i]*(*m_eA)[i];
+      sum += ( 0.5*LambdaiAA
+          *( (*MsA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i]*(*Ms0A_inverse)[i]-1.0 )
+          - 0.5*LambdaiAB*(tauB.MagSq()/taueBsq-1) )
+        *(*spinA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i];
+
+      sum += (*J0AB)[i]/(*muA)[i]*PB;
 
       if(z>0 || zperiodic) {
         OC_INDEX j = i-xydim;
@@ -721,6 +763,10 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
     chi_l2.AdjustSize(mesh);
     G1.AdjustSize(mesh);
     G2.AdjustSize(mesh);
+    Lambdai11.AdjustSize(mesh);
+    Lambdai12.AdjustSize(mesh);
+    Lambdai21.AdjustSize(mesh);
+    Lambdai22.AdjustSize(mesh);
 
     // Set pointers for the temperature-dependent parameters in states.
     switch(state.lattice_type) {

@@ -92,6 +92,7 @@ private:
     return Update_m_e_chi_l(state, DEFAULT_M_E_TOL);
   }
   mutable Oxs_MeshValue<OC_REAL8m> G1, G2;
+  mutable Oxs_MeshValue<OC_REAL8m> Lambdai11, Lambdai12, Lambdai21, Lambdai22;
 
   // Supplied outputs, in addition to those provided by Oxs_Energy.
   Oxs_ScalarOutput<YY_2LatExchange6Ngbr> maxspinangle_output;
