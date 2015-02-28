@@ -1166,6 +1166,7 @@ OC_REAL8m YY_2LatExchange6Ngbr::Langevin(OC_REAL8m x) const
 
 OC_REAL8m YY_2LatExchange6Ngbr::LangevinDeriv(OC_REAL8m x) const
 {
+  if(fabs(x)<OC_REAL4_EPSILON) return 1./3.;
   OC_REAL8m temp = sinh(x);
   return -1.0/(temp*temp)+1.0/(x*x);
 }
