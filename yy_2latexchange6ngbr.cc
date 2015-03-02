@@ -758,10 +758,6 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
     J021_init->FillMeshValue(mesh,J021);
     mu1_init->FillMeshValue(mesh,mu1);
     mu2_init->FillMeshValue(mesh,mu2);
-    for(OC_INDEX i=0; i<size; i++) {
-      Tc1[i] = J01[i]/(3*KB);
-      Tc2[i] = J02[i]/(3*KB);
-    }
     m_e1.AdjustSize(mesh);
     m_e2.AdjustSize(mesh);
     chi_l1.AdjustSize(mesh);
@@ -796,6 +792,7 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
       break;
     }
 
+    // Tc is also updated after calculation of m_e, chi_l
     Update_m_e_chi_l(*(state.total_lattice), 1e-4);
   }
 
@@ -1079,9 +1076,12 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
   // Newton method.
   const OC_REAL8m size = state.mesh->Size();
   const OC_REAL8m tol = fabs(tol_in);
+  const OC_REAL8m tolsq = tol_in*tol_in;
 
   OC_REAL8m A11, A12, A21, A22;
+  OC_REAL8m x10, x20, y10, y20;
   OC_REAL8m x1, x2, y1, y2;
+  OC_REAL8m dx1, dx2, dy1, dy2;
   OC_REAL8m dL1, dL2;
   OC_REAL8m J11, J12, J21, J22, det, deti;
   for(OC_INDEX i=0; i<size; i++) {
@@ -1102,6 +1102,9 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
             -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
       chi_l1[i] = MU0*mu1[i]/fabs(J021[i])*G1[i];
       chi_l2[i] = MU0*mu1[i]/fabs(J021[i])*G2[i];
+
+      Tc1[i] = (J01[i]+fabs(J012[i]))/(3*KB);
+      Tc2[i] = (J02[i]+fabs(J021[i]))/(3*KB);
       continue;
     }
     const OC_REAL8m beta = 1.0/kB_T;
@@ -1114,6 +1117,7 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
     y1 = Langevin(A11*x1+A12*x2)-x1;
     y2 = Langevin(A21*x1+A22*x2)-x2;
     do {
+      x10 = x1; x20 = x2; y10 = y1; y20 = y2;
       dL1 = LangevinDeriv(A11*x1+A12*x2);
       dL2 = LangevinDeriv(A21*x1+A22*x2);
       // Jacobian
@@ -1122,29 +1126,20 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
       J21 = A21*dL2;
       J22 = A22*dL2-1;
       det = J11*J22-J12*J21;
-      if(det == 0.0) { 
-        m_e1[i]=x1;
-        m_e2[i]=x2;
-
-        dL1 = LangevinDeriv(A11*x1+A12*x2);
-        dL2 = LangevinDeriv(A21*x1+A22*x2);
-        G1[i] = ( fabs(A21*A12)*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
-          /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
-        G2[i] = ( fabs(A21*A12)*dL1*dL2 + (mu2[i]/mu1[i])*fabs(A12)*dL2*(1-A11*dL1) )
-          /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
-        chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
-        chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
-        continue;
+      if(det == 0.0) {
+        // No more change. Calculate parameters with current x1, x2.
+        break;
       }
       deti = 1.0/det;
-      x1 -= deti*(J22*y1-J12*y2);
-      x2 -= deti*(-J21*y1+J11*y2);
+      dx1 = -deti*(J22*y1-J12*y2);
+      dx2 = -deti*(-J21*y1+J11*y2);
+      x1 = x10 + dx1;
+      x2 = x20 + dx2;
       y1 = Langevin(A11*x1+A12*x2)-x1;
       y2 = Langevin(A21*x1+A22*x2)-x2;
-    } while( (fabs(y1)>tol || fabs(y2)>tol) &&
-        (fabs(x1)>tol || fabs(x2)>tol) );
+    } while( dx1*dx1>tolsq || dx2*dx2>tolsq );
     m_e1[i] = x1>0 ? x1 : 0.0;
-    m_e2[i] = x1>0 ? x2 : 0.0;
+    m_e2[i] = x2>0 ? x2 : 0.0;
 
     dL1 = LangevinDeriv(A11*x1+A12*x2);
     dL2 = LangevinDeriv(A21*x1+A22*x2);
@@ -1154,13 +1149,21 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
       /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
     chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
     chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
+
+    Tc1[i] = m_e1[i]>tol
+      ? (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i])
+      : max(J01[i],J02[i])/(3*KB);
+    Tc2[i] = m_e2[i]>tol
+      ? (J02[i]*m_e2[i]+fabs(J021[i])*m_e1[i])/(3*KB*m_e2[i])
+      : max(J01[i],J02[i])/(3*KB);
   }
 }
 
 OC_REAL8m YY_2LatExchange6Ngbr::Langevin(OC_REAL8m x) const
 {
   OC_REAL8m temp = exp(2*x)+1;
-  temp /= exp(2*x)-1; // temp == coth(x);
+  if(!Nb_IsFinite(temp)) return x>0 ? 1.0 : -1.0; // Large input
+  temp /= temp-2; // temp = coth(x);
   return temp-1/x;
 }
 
@@ -1168,6 +1171,7 @@ OC_REAL8m YY_2LatExchange6Ngbr::LangevinDeriv(OC_REAL8m x) const
 {
   if(fabs(x)<OC_REAL4_EPSILON) return 1./3.;
   OC_REAL8m temp = sinh(x);
+  if(!Nb_IsFinite(temp)) return 1.0/(x*x); // Large input
   return -1.0/(temp*temp)+1.0/(x*x);
 }
 

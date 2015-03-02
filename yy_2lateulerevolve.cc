@@ -1052,19 +1052,22 @@ void YY_2LatEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
   const Oxs_MeshValue<OC_REAL8m>& Tc2 = *(state.lattice2->Tc);
   const OC_INDEX size = mesh->Size();
   OC_INDEX i;
+  // Note: Tc1 and Tc2 are functions of T, m_e1, and m_e2.
 
   for(i=0;i<size;i++) {
-    alpha_t1[i] = fabs( alpha_t10[i]*(1-temperature[i]/(3*Tc1[i])) );
-    alpha_t2[i] = fabs( alpha_t20[i]*(1-temperature[i]/(3*Tc2[i])) );
     if(temperature[i] > Tc1[i]) {
+      alpha_t1[i] = 2./3.*alpha_t10[i];
       alpha_l1[i] = alpha_t1[i];
     } else {
       alpha_l1[i] = alpha_t10[i]*2*temperature[i]/(3*Tc1[i]);
+      alpha_t1[i] = alpha_t10[i]*(1-temperature[i]/(3*Tc1[i]));
     }
     if(temperature[i] > Tc2[i]) {
+      alpha_t2[i] = 2./3.*alpha_t20[i];
       alpha_l2[i] = alpha_t2[i];
     } else {
       alpha_l2[i] = alpha_t20[i]*2*temperature[i]/(3*Tc2[i]);
+      alpha_t2[i] = alpha_t20[i]*(1-temperature[i]/(3*Tc2[i]));
     }
 
     // Update variance of stochastic field
