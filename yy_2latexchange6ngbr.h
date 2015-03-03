@@ -87,6 +87,7 @@ private:
   // Langevin function and its derivative
   OC_REAL8m Langevin(OC_REAL8m x) const;
   OC_REAL8m LangevinDeriv(OC_REAL8m x) const;
+  mutable OC_REAL8m tol, tolsq; // Calculation tolerance
   void Update_m_e_chi_l(const Oxs_SimState& state, OC_REAL8m tol) const;
   void Update_m_e_chi_l(const Oxs_SimState& state) const {
     return Update_m_e_chi_l(state, DEFAULT_M_E_TOL);

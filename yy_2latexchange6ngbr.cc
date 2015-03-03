@@ -60,7 +60,8 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
   : Oxs_ChunkEnergy(name,newdtr,argstr),
     coef_size(0), mesh_id(0),
     coef1(NULL), coef2(NULL), coef12(NULL),
-    last_stage_number(-1)
+    last_stage_number(-1),
+    tol(1e-4), tolsq(1e-4)
 {
   // Process arguments
   OXS_GET_INIT_EXT_OBJECT("atlas",Oxs_Atlas,atlas);
@@ -629,25 +630,27 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum_l(0.,0.,0.);
 
       // Exchange with the other sublattice
-      OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
-      OC_REAL8m LambdaiAB = fabs((*m_eA)[i]*(*m_eB)[i])
-        *fabs((*J0AB)[i])/((*m_eA)[i]*(*m_eA)[i]*(*muA)[i]*MU0);
-      ThreeVector PB = baseA^baseB;
-      PB ^= baseA;
-      PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
-      ThreeVector tauB = baseA;
-      tauB *= baseB*baseA;  // Dot product
-      tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // tauB = nA(mB dot nA)
-      OC_REAL8m taueBsq = (*m_eA)[i]*(*m_eB)[i];
-      taueBsq = taueBsq*taueBsq;
-      taueBsq /= (*m_eA)[i]*(*m_eA)[i];
-      sum_l += ( 0.5*LambdaiAA
-          *( (*MsA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i]*(*Ms0A_inverse)[i]/((*m_eA)[i]*(*m_eA)[i])-1.0 )
-          - 0.5*LambdaiAB*(tauB.MagSq()/taueBsq-1.0) )
-        *baseA*(*MsA)[i]*(*Ms0A_inverse)[i];
+      if( (*m_eA)[i]>tol ) {
+        OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
+        OC_REAL8m LambdaiAB = fabs((*m_eA)[i]*(*m_eB)[i])
+          *fabs((*J0AB)[i])/((*m_eA)[i]*(*m_eA)[i]*(*muA)[i]*MU0);
+        ThreeVector PB = baseA^baseB;
+        PB ^= baseA;
+        PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
+        ThreeVector tauB = baseA;
+        tauB *= baseB*baseA;  // Dot product
+        tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // tauB = nA(mB dot nA)
+        OC_REAL8m taueBsq = (*m_eA)[i]*(*m_eB)[i];
+        taueBsq = taueBsq*taueBsq;
+        taueBsq /= (*m_eA)[i]*(*m_eA)[i];
+        sum_l += ( 0.5*LambdaiAA
+            *( (*MsA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i]*(*Ms0A_inverse)[i]/((*m_eA)[i]*(*m_eA)[i])-1.0 )
+            - 0.5*LambdaiAB*(tauB.MagSq()/taueBsq-1.0) )
+          *baseA*(*MsA)[i]*(*Ms0A_inverse)[i];
 
-      sum += (*J0AB)[i]/(*muA)[i]*PB;
-      sum *= -0.5*MsiA;  // This will be divided by MsiA at the end.
+        sum += (*J0AB)[i]/(*muA)[i]*PB;
+        sum *= -0.5*MsiA;  // This will be divided by MsiA at the end.
+      }
 
       if(z>0 || zperiodic) {
         OC_INDEX j = i-xydim;
@@ -1075,8 +1078,8 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
   // Solve for the equilibrium spin polarization m_e using 2 variable
   // Newton method.
   const OC_REAL8m size = state.mesh->Size();
-  const OC_REAL8m tol = fabs(tol_in);
-  const OC_REAL8m tolsq = tol_in*tol_in;
+  tol = fabs(tol_in);
+  tolsq = tol_in*tol_in;
 
   OC_REAL8m A11, A12, A21, A22;
   OC_REAL8m x10, x20, y10, y20;
@@ -1150,12 +1153,16 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
     chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
     chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
 
-    Tc1[i] = m_e1[i]>tol
-      ? (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i])
-      : max(J01[i],J02[i])/(3*KB);
-    Tc2[i] = m_e2[i]>tol
-      ? (J02[i]*m_e2[i]+fabs(J021[i])*m_e1[i])/(3*KB*m_e2[i])
-      : max(J01[i],J02[i])/(3*KB);
+    if(m_e1[i]>tol && m_e2[i]>tol) {
+      Tc1[i] = (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i]);
+      Tc2[i] = (J02[i]*m_e2[i]+fabs(J021[i])*m_e1[i])/(3*KB*m_e2[i]);
+    } else {
+      // MFA for T>Tc. See Eq. (10) in Ostler, PRB 84, 024407 (2011).
+      const OC_REAL8m a = J012[i]*J021[i]-J01[i]*J02[i];
+      const OC_REAL8m b = J01[i]+J02[i];
+      Tc1[i] = 2*a/( 3*KB*b*( sqrt(1+4*a/(b*b))-1 ) );
+      Tc2[i] = 2*a/( 3*KB*b*( sqrt(1+4*a/(b*b))-1 ) );
+    }
   }
 }
 
