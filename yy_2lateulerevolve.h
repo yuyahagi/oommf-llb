@@ -34,8 +34,6 @@
 
 /* End includes */
 
-#define DEFAULT_M_E_TOL 1e-4
-
 class YY_2LatEulerEvolve:public YY_2LatTimeEvolver {
 private:
   mutable OC_UINT4m mesh_id;
@@ -81,30 +79,6 @@ private:
   void UpdateMeshArrays(const Oxs_SimState& state);
   // Call with the total_lattice state and it updates values for both
   // sublattices.
-
-  // Parameters used for longitudinal susceptibility
-  // Exchange parameter J = nJ_0 and atomistic magnetic moment mu, where
-  // n is the number of neighboring atoms
-  Oxs_OwnedPointer<Oxs_ScalarField> J1_init, J2_init;
-  Oxs_OwnedPointer<Oxs_ScalarField> mu1_init, mu2_init;
-  Oxs_MeshValue<OC_REAL8m> J1, J2;
-  Oxs_MeshValue<OC_REAL8m> mu1, mu2;
-  // Currie temperature in Kelvin, calculated from J and mu
-  mutable Oxs_MeshValue<OC_REAL8m> Tc1, Tc2;
-
-  // Members for calculating m_e, equilibrium spin polarization at
-  // temperature T and chi_l, longitudinal susceptibility.
-  mutable Oxs_MeshValue<OC_REAL8m> m_e1, m_e2;
-  mutable Oxs_MeshValue<OC_REAL8m> chi_l1, chi_l2;
-  void CalculateLongField(const Oxs_SimState& state,
-      Oxs_MeshValue<ThreeVector>& longfield) const;
-  // Langevin function and its derivative
-  OC_REAL8m Langevin(OC_REAL8m x) const;
-  OC_REAL8m LangevinDeriv(OC_REAL8m x) const;
-  void Update_m_e_chi_l(OC_REAL8m tol) const;
-  void Update_m_e_chi_l() const {
-    return Update_m_e_chi_l(DEFAULT_M_E_TOL);
-  }
 
   // =======================================================================
   // Caches and scratch spaces
@@ -277,5 +251,4 @@ public:
  */
 
 
-#undef DEFAULT_M_E_TOL
 #endif // _YY_2LATEULEREVOLVE

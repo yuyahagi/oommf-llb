@@ -181,8 +181,7 @@ void YY_2LatTimeEvolver::GetEnergyDensity
     steponlytime.Stop();
   }
 #endif // REPORT_TIME
-  Oxs_ComputeEnergies(state1,oced1,director->GetEnergyObjects(),oceed);
-  Oxs_ComputeEnergies(state2,oced2,director->GetEnergyObjects(),oceed);
+  YY_2LatComputeEnergies(state,oced1,oced2,director->GetEnergyObjects(),oceed);
 #if REPORT_TIME
   if(sot_running) {
     steponlytime.Start();
