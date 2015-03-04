@@ -793,6 +793,10 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
       wMs1[i] *= -1;
       workstate1.spin[i] *= -1;
     }
+    if(wMs1[i] > (*cstate1.Ms0)[i]) {
+      // Ms cannot be >Ms0.
+      wMs1[i] = (*cstate1.Ms0)[i];
+    }
     if(wMs1[i] != 0.0) {
       wMs_inverse1[i] = 1.0/wMs1[i];
     } else {
@@ -833,6 +837,10 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
       // keep Ms positive and flip spin direction.
       wMs2[i] *= -1;
       workstate2.spin[i] *= -1;
+    }
+    if(wMs2[i] > (*cstate2.Ms0)[i]) {
+      // Ms cannot be >Ms0.
+      wMs2[i] = (*cstate2.Ms0)[i];
     }
     if(wMs2[i] != 0.0) {
       wMs_inverse2[i] = 1.0/wMs2[i];
