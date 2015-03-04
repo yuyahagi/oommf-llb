@@ -630,7 +630,12 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum_l(0.,0.,0.);
 
       // Exchange with the other sublattice
-      if( (*m_eA)[i]>tol ) {
+      if( (*m_eA)[i]<tol ) {
+        // At this point, calculation of exchange field is limited to T<Tc
+        // where m_e != 0.
+        throw Oxs_ExtError(this, "Cannot calculate exchange field with m_e"
+            " = 0 (T > Tc).");
+      } else {
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eA)[i]*(*m_eB)[i])
           *fabs((*J0AB)[i])/((*m_eA)[i]*(*m_eA)[i]*(*muA)[i]*MU0);
