@@ -38,8 +38,7 @@
 
 /* End includes */
 
-class YY_2LatUniaxialAnisotropy
-  : public Oxs_ChunkEnergy, public Oxs_EnergyPreconditionerSupport {
+class YY_2LatUniaxialAnisotropy : public Oxs_ChunkEnergy {
 private:
   enum AnisotropyCoefType {
     ANIS_UNKNOWN, K1_TYPE, Ha_TYPE
@@ -126,8 +125,6 @@ public:
   virtual void StageRequestCount(unsigned int& min,
 				 unsigned int& max) const;
 
-  // Optional interface for conjugate-gradient evolver.
-  virtual int IncrementPreconditioner(PreconditionerData& pcd);
 };
 
 
