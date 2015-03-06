@@ -53,45 +53,72 @@ YY_2LatUniaxialAnisotropy::YY_2LatUniaxialAnisotropy(
   : Oxs_ChunkEnergy(name,newdtr,argstr),
     aniscoeftype(ANIS_UNKNOWN), mesh_id(0),
     K11_is_uniform(0), Ha1_is_uniform(0), axis1_is_uniform(0),
+    K12_is_uniform(0), Ha2_is_uniform(0), axis2_is_uniform(0),
     uniform_K11_value(0.0), uniform_Ha1_value(0.0),
+    uniform_K12_value(0.0), uniform_Ha2_value(0.0),
     integration_method(UNKNOWN_INTEG),
     has_multscript(0), number_of_stages(0),
     mult_state_id(0), mult(1.0), dmult(0.0)
 {
   // Process arguments
   OC_BOOL has_K11 = HasInitValue("K11");
+  OC_BOOL has_K12 = HasInitValue("K12");
   OC_BOOL has_Ha1 = HasInitValue("Ha1");
-  if(has_K11 && has_Ha1) {
+  OC_BOOL has_Ha2 = HasInitValue("Ha2");
+  if( (has_K11 && has_Ha1) || (has_K12 && has_Ha2) ) {
     throw Oxs_ExtError(this,"Invalid anisotropy coefficient request:"
-			 " both K11 and Ha1 specified; only one should"
+			 " both K1 and Ha specified; only one should"
 			 " be given.");
-  } else if(has_K11) {
+  }
+  
+  if(has_K11) {
     OXS_GET_INIT_EXT_OBJECT("K11",Oxs_ScalarField,K11_init);
+    OXS_GET_INIT_EXT_OBJECT("K12",Oxs_ScalarField,K12_init);
     Oxs_UniformScalarField* tmpK11ptr
       = dynamic_cast<Oxs_UniformScalarField*>(K11_init.GetPtr());
+    Oxs_UniformScalarField* tmpK12ptr
+      = dynamic_cast<Oxs_UniformScalarField*>(K12_init.GetPtr());
     if(tmpK11ptr) {
       // Initialization is via a uniform field; set up uniform
       // K11 variables.
       K11_is_uniform = 1;
       uniform_K11_value = tmpK11ptr->SoleValue();
     }
+    if(tmpK12ptr) {
+      // Initialization is via a uniform field; set up uniform
+      // K11 variables.
+      K12_is_uniform = 1;
+      uniform_K12_value = tmpK12ptr->SoleValue();
+    }
     aniscoeftype = K1_TYPE;
   } else {
     OXS_GET_INIT_EXT_OBJECT("Ha1",Oxs_ScalarField,Ha1_init);
+    OXS_GET_INIT_EXT_OBJECT("Ha2",Oxs_ScalarField,Ha2_init);
     Oxs_UniformScalarField* tmpHa1ptr
       = dynamic_cast<Oxs_UniformScalarField*>(Ha1_init.GetPtr());
+    Oxs_UniformScalarField* tmpHa2ptr
+      = dynamic_cast<Oxs_UniformScalarField*>(Ha2_init.GetPtr());
     if(tmpHa1ptr) {
       // Initialization is via a uniform field; set up uniform
       // Ha1 variables.
       Ha1_is_uniform = 1;
       uniform_Ha1_value = tmpHa1ptr->SoleValue();
     }
+    if(tmpHa2ptr) {
+      // Initialization is via a uniform field; set up uniform
+      // Ha1 variables.
+      Ha2_is_uniform = 1;
+      uniform_Ha2_value = tmpHa2ptr->SoleValue();
+    }
     aniscoeftype = Ha_TYPE;
   }
 
   OXS_GET_INIT_EXT_OBJECT("axis1",Oxs_VectorField,axis1_init);
+  OXS_GET_INIT_EXT_OBJECT("axis2",Oxs_VectorField,axis2_init);
   Oxs_UniformVectorField* tmpaxis1ptr
     = dynamic_cast<Oxs_UniformVectorField*>(axis1_init.GetPtr());
+  Oxs_UniformVectorField* tmpaxis2ptr
+    = dynamic_cast<Oxs_UniformVectorField*>(axis2_init.GetPtr());
   if(tmpaxis1ptr) {
     // Initialization is via a uniform field.  For convenience,
     // modify the size of the field components to norm 1, as
@@ -107,6 +134,12 @@ YY_2LatUniaxialAnisotropy::YY_2LatUniaxialAnisotropy(
     tmpaxis1ptr->SetMag(1.0);
     axis1_is_uniform = 1;
     uniform_axis1_value = tmpaxis1ptr->SoleValue();
+  }
+  if(tmpaxis2ptr) {
+    // Initialization via a uniform field.
+    tmpaxis2ptr->SetMag(1.0);
+    axis2_is_uniform = 1;
+    uniform_axis2_value = tmpaxis2ptr->SoleValue();
   }
 
 
@@ -161,8 +194,11 @@ OC_BOOL YY_2LatUniaxialAnisotropy::Init()
 {
   mesh_id = 0;
   K11.Release();
+  K12.Release();
   Ha1.Release();
+  Ha2.Release();
   axis1.Release();
+  axis2.Release();
 
   mult_state_id = 0;
   mult = 1.0;
@@ -242,9 +278,49 @@ void YY_2LatUniaxialAnisotropy::RectIntegEnergy
   Nb_Xpfloat energy_sum = 0;
   Nb_Xpfloat pE_pt_sum = 0;
 
-  OC_REAL8m k = uniform_K11_value;
-  OC_REAL8m field_mult = uniform_Ha1_value;
-  ThreeVector unifaxis = uniform_axis1_value;
+  // Depending on the lattice type, specify the coefficients to be used.
+  const Oxs_MeshValue<OC_REAL8m> *K1;
+  const Oxs_MeshValue<OC_REAL8m> *Ha;
+  const Oxs_MeshValue<ThreeVector> *axis;
+  OC_BOOL K1_is_uniform;
+  OC_BOOL Ha_is_uniform;
+  OC_BOOL axis_is_uniform;
+  OC_REAL8m uniform_K1_value;
+  OC_REAL8m uniform_Ha_value;
+  const ThreeVector *uniform_axis_value;
+  switch(state.lattice_type) {
+  case Oxs_SimState::TOTAL:
+    throw Oxs_ExtError(this, "Programming error: YY_2LatUniaxialAnisotropy"
+        "::RectIntegEnergy was called with a wrong type of simulation"
+        " state with lattice_type = TOTAL.");
+    break;
+  case Oxs_SimState::LATTICE1:
+    K1 = &K11;
+    Ha = &Ha1;
+    axis = &axis1;
+    K1_is_uniform = K11_is_uniform;
+    Ha_is_uniform = Ha1_is_uniform;
+    axis_is_uniform = axis1_is_uniform;
+    uniform_K1_value = uniform_K11_value;
+    uniform_Ha_value = uniform_Ha1_value;
+    uniform_axis_value = &uniform_axis1_value;
+    break;
+  case Oxs_SimState::LATTICE2:
+    K1 = &K12;
+    Ha = &Ha2;
+    axis = &axis2;
+    K1_is_uniform = K12_is_uniform;
+    Ha_is_uniform = Ha2_is_uniform;
+    axis_is_uniform = axis2_is_uniform;
+    uniform_K1_value = uniform_K12_value;
+    uniform_Ha_value = uniform_Ha2_value;
+    uniform_axis_value = &uniform_axis2_value;
+    break;
+  }
+
+  OC_REAL8m k = uniform_K1_value;
+  OC_REAL8m field_mult = uniform_Ha_value;
+  ThreeVector unifaxis = *uniform_axis_value;
 
   OC_REAL8m scaling  = mult;  // Copy from class mutables.  These are
   OC_REAL8m dscaling = dmult; // set from main thread once per state.
@@ -252,10 +328,10 @@ void YY_2LatUniaxialAnisotropy::RectIntegEnergy
   for(OC_INDEX i=node_start;i<node_stop;++i) {
 
     if(aniscoeftype == K1_TYPE) {
-      if(!K11_is_uniform) k = K11[i];
+      if(!K1_is_uniform) k = (*K1)[i];
       field_mult = (2.0/MU0)*k*Ms_inverse[i];
     } else {
-      if(!Ha1_is_uniform) field_mult = Ha1[i];
+      if(!Ha_is_uniform) field_mult = (*Ha)[i];
       k = 0.5*MU0*field_mult*Ms[i];
     }
     if(k==0.0 || field_mult == 0.0) { // Includes Ms==0.0 case
@@ -265,7 +341,7 @@ void YY_2LatUniaxialAnisotropy::RectIntegEnergy
       continue;
     }
 
-    const ThreeVector& axisi = (axis1_is_uniform ? unifaxis : axis1[i]);
+    const ThreeVector& axisi = (axis_is_uniform ? unifaxis : (*axis)[i]);
     if(k<=0) {
       // Easy plane (hard axis)
       // NOTE: This division is based on the value of k as specified by
@@ -360,6 +436,55 @@ void YY_2LatUniaxialAnisotropy::ComputeEnergyChunk
                        " Invalid node_start/node_stop values");
   }
 
+  // Depending on the lattice type, specify the coefficients to be used.
+  Oxs_MeshValue<OC_REAL8m> *K1;
+  Oxs_MeshValue<OC_REAL8m> *Ha;
+  Oxs_MeshValue<ThreeVector> *axis;
+  const Oxs_OwnedPointer<Oxs_ScalarField> *K1_init;
+  const Oxs_OwnedPointer<Oxs_ScalarField> *Ha_init;
+  const Oxs_OwnedPointer<Oxs_VectorField> *axis_init;
+  OC_BOOL K1_is_uniform;
+  OC_BOOL Ha_is_uniform;
+  OC_BOOL axis_is_uniform;
+  OC_REAL8m uniform_K1_value;
+  OC_REAL8m uniform_Ha_value;
+  const ThreeVector *uniform_axis_value;
+  switch(state.lattice_type) {
+  case Oxs_SimState::TOTAL:
+    throw Oxs_ExtError(this, "Programming error: YY_2LatUniaxialAnisotropy"
+        "::ComputeEnergyChunk was called with a wrong type of simulation"
+        " state with lattice_type = TOTAL.");
+    break;
+  case Oxs_SimState::LATTICE1:
+    K1 = &K11;
+    Ha = &Ha1;
+    axis = &axis1;
+    K1_init = &K11_init;
+    Ha_init = &Ha1_init;
+    axis_init = &axis1_init;
+    K1_is_uniform = K11_is_uniform;
+    Ha_is_uniform = Ha1_is_uniform;
+    axis_is_uniform = axis1_is_uniform;
+    uniform_K1_value = uniform_K11_value;
+    uniform_Ha_value = uniform_Ha1_value;
+    uniform_axis_value = &uniform_axis1_value;
+    break;
+  case Oxs_SimState::LATTICE2:
+    K1 = &K12;
+    Ha = &Ha2;
+    axis = &axis2;
+    K1_init = &K12_init;
+    Ha_init = &Ha2_init;
+    axis_init = &axis2_init;
+    K1_is_uniform = K12_is_uniform;
+    Ha_is_uniform = Ha2_is_uniform;
+    axis_is_uniform = axis2_is_uniform;
+    uniform_K1_value = uniform_K12_value;
+    uniform_Ha_value = uniform_Ha2_value;
+    uniform_axis_value = &uniform_axis2_value;
+    break;
+  }
+
   if(mesh_id !=  state.mesh->Id()) {
     // This is either the first pass through, or else mesh
     // has changed.  Initialize/update data fields.
@@ -426,21 +551,21 @@ void YY_2LatUniaxialAnisotropy::ComputeEnergyChunk
       // Main thread (threadnumber == 0)
       try {
         if(aniscoeftype == K1_TYPE) {
-          if(!K11_is_uniform) K11_init->FillMeshValue(state.mesh,K11);
+          if(!K1_is_uniform) (*K1_init)->FillMeshValue(state.mesh,*K1);
         } else if(aniscoeftype == Ha_TYPE) {
-          if(!Ha1_is_uniform) Ha1_init->FillMeshValue(state.mesh,Ha1);
+          if(!Ha_is_uniform) (*Ha_init)->FillMeshValue(state.mesh,*Ha);
         }
-        if(!axis1_is_uniform) {
-          axis1_init->FillMeshValue(state.mesh,axis1);
+        if(!axis_is_uniform) {
+          (*axis_init)->FillMeshValue(state.mesh,*axis);
           const OC_INDEX size = state.mesh->Size();
           for(OC_INDEX i=0;i<size;i++) {
-            // Check that axis1 is a unit vector:
+            // Check that axis is a unit vector:
             const OC_REAL8m eps = 1e-14;
-            if(axis1[i].MagSq()<eps*eps) {
+            if((*axis)[i].MagSq()<eps*eps) {
               throw Oxs_ExtError(this,"Invalid initialization detected:"
-                                 " Zero length anisotropy axis1");
+                                 " Zero length anisotropy axis");
             } else {
-              axis1[i].MakeUnit();
+              (*axis)[i].MakeUnit();
             }
           }
         }
