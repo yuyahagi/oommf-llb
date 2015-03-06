@@ -36,8 +36,11 @@ public:
 };
 
 class Oxs_Driver: public Oxs_Ext {
-//private:
-protected:
+  // Allow access to private members from YY_2LatDriver for two-lattice 
+  // simulations
+  friend class YY_2LatDriver;
+
+private:
 #if REPORT_TIME
   // driversteptime records time (cpu and wall) spent in the driver's
   // Step function.  This information is reported to stderr when
