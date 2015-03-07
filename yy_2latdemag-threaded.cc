@@ -3103,6 +3103,10 @@ void _YY_2LatDemagFFTyzConvolveThread::Cmd(int thread_number, void* /* data */)
 // asdf //////////////////////////////
 
 
+// Note: 2015-03-06 Yu Yahagi
+// For now, ComputeEnergy is called twice for each sublattice. Since it 
+// repeats almost identical calculations with the total spin, it can and
+// should be much more efficient either by caching or calling it just once.
 void YY_2LatDemag::ComputeEnergy
 (const Oxs_SimState& state,
  Oxs_ComputeEnergyData& oced
@@ -3115,8 +3119,10 @@ void YY_2LatDemag::ComputeEnergy
     mesh_id = state.mesh->Id();
   }
 
-  const Oxs_MeshValue<ThreeVector>& spin = state.spin;
-  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.Ms);
+  const Oxs_MeshValue<ThreeVector>& spin = state.total_lattice->spin;
+  const Oxs_MeshValue<ThreeVector>& spinA = state.spin;
+  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.total_lattice->Ms);
+  const Oxs_MeshValue<OC_REAL8m>& MsA = *(state.Ms);
 
   // Fill Mtemp with Ms[]*spin[].  The plan is to eventually
   // roll this step into the forward FFT routine.
@@ -3445,8 +3451,8 @@ void YY_2LatDemag::ComputeEnergy
     for(ithread=0;ithread<MaxThreadCount;++ithread) {
       fftx_thread[ithread].carr = Hxfrm;
 
-      fftx_thread[ithread].spin_ptr = &spin;
-      fftx_thread[ithread].Ms_ptr   = &Ms;
+      fftx_thread[ithread].spin_ptr = &spinA;
+      fftx_thread[ithread].Ms_ptr   = &MsA;
       fftx_thread[ithread].oced_ptr = &oced;
       fftx_thread[ithread].locker_info.Set(rdimx,rdimy,rdimz,
                                          cdimx,cdimy,cdimz,

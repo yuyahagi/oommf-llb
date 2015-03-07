@@ -1830,6 +1830,10 @@ SDA01_count = 0;
 
 }
 
+// Note: 2015-03-06 Yu Yahagi
+// For now, GetEnergy is called twice for each sublattice. Since it repeats
+// almost identical calculations with the total spin, it can and should be 
+// much more efficient either by caching or calling it just once.
 void YY_2LatDemag::GetEnergy
 (const Oxs_SimState& state,
  Oxs_EnergyData& oed
@@ -1844,8 +1848,10 @@ void YY_2LatDemag::GetEnergy
     mesh_id = state.mesh->Id();
   }
 
-  const Oxs_MeshValue<ThreeVector>& spin = state.spin;
-  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.Ms);
+  const Oxs_MeshValue<ThreeVector>& spin = state.total_lattice->spin;
+  const Oxs_MeshValue<ThreeVector>& spinA = state.spin;
+  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.total_lattice->Ms);
+  const Oxs_MeshValue<OC_REAL8m>& MsA = *(state.Ms);
 
   // Use supplied buffer space, and reflect that use in oed.
   oed.energy = oed.energy_buffer;
@@ -2328,8 +2334,8 @@ void YY_2LatDemag::GetEnergy
   // Calculate pointwise energy density: -0.5*MU0*<M,H>
   const OXS_FFT_REAL_TYPE emult =  -0.5 * MU0;
   for(i=0;i<rsize;++i) {
-    OXS_FFT_REAL_TYPE dot = spin[i]*field[i];
-    energy[i] = emult * dot * Ms[i];
+    OXS_FFT_REAL_TYPE dot = spinA[i]*field[i];
+    energy[i] = emult * dot * MsA[i];
   }
 #if REPORT_TIME
   dottime.Stop();
