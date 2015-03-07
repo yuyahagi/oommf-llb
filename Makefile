@@ -53,4 +53,3 @@ test02:
 test03:
 	$(OOMMF) oxsii $(TESTMIF03)
 
--include $(DEPEND)
