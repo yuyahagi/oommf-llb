@@ -86,7 +86,7 @@ Oxs classes
 
 ### Two-lattice LLB ###
 
-For two-lattice simulations, you need to use YY\_2LatEulerEvolve, YY\_2LatTimeDriver, and other YY\_2Lat\* energy terms, replacing Oxs\_EulerEvolve, Oxs\_TimeDriver, and other Oxs\_\* energy terms. The simulation can still run with inproper Oxs\_\* energy terms but with false results.
+For two-lattice simulations, you need to use YY\_2LatEulerEvolve, YY\_2LatTimeDriver, and other YY\_2Lat\* energy terms, replacing Oxs\_EulerEvolve, Oxs\_TimeDriver, and other Oxs\_\* energy terms. The simulation can still run with improper Oxs\_\* energy terms but with false results.
 
 At this point, temperature above Tc is not supported. YY_2LatExchange6Ngbr throws and exception when T > Tc. A workaround is to simulate the two separate systems using YY_LLBEulerEvolve.
 
