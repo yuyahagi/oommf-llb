@@ -47,7 +47,8 @@ YY_2LatDriver::YY_2LatDriver
 ( const char* name,        // Child instance id
   Oxs_Director* newdtr,    // App director
   const char* argstr       // Args
-  ) : Oxs_Driver(name,newdtr,argstr)
+  ) : Oxs_Driver(name,newdtr,argstr),
+  normalize_m0(1)
 // Parent Oxs_Driver initializes members
 {
   // Reserve additional simulation states for the sublattices
@@ -61,6 +62,14 @@ YY_2LatDriver::YY_2LatDriver
   OXS_GET_INIT_EXT_OBJECT("Ms2",Oxs_ScalarField,Ms2init);
   OXS_GET_INIT_EXT_OBJECT("m01",Oxs_VectorField,m01);
   OXS_GET_INIT_EXT_OBJECT("m02",Oxs_VectorField,m02);
+
+  // Should m01 and m02 be normalized (starting T = 0K)?
+  if(GetIntInitValue("normalize_m0",1)) {
+    normalize_m0 = 1;
+  } else {
+    normalize_m0 = 0;
+  }
+
 
   Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms1);
   Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms01);
@@ -216,6 +225,19 @@ void YY_2LatDriver::SetStartValues(
 
     // Insure that spins are unit vectors
     OC_INDEX size = istate.spin.Size();
+    if(!normalize_m0) {
+      // Set up values for non-zero temperature start
+      for(OC_INDEX i=0;i<size;i++) {
+        OC_REAL8m mag1 = sqrt(istate1.spin[i].MagSq());
+        OC_REAL8m mag2 = sqrt(istate2.spin[i].MagSq());
+        if(mag1 > 1.0 || mag2 > 1.0) {
+          throw Oxs_ExtError(this, "Initialization error: magnetization"
+              " polarization larger than 1 is specified");
+        }
+        (*istate1.Ms)[i] = mag1*(*istate1.Ms0)[i];
+        (*istate2.Ms)[i] = mag2*(*istate2.Ms0)[i];
+      }
+    }
     for(OC_INDEX i=0;i<size;i++) {
       istate1.spin[i].MakeUnit();
       istate2.spin[i].MakeUnit();
