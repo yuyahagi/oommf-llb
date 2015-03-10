@@ -66,6 +66,7 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> Ms0;  // Saturation magnetization
   mutable Oxs_MeshValue<OC_REAL8m> Ms0_inverse;  // 1/Ms
   Oxs_OwnedPointer<Oxs_VectorField> m0; // Initial spin configuration
+  OC_BOOL normalize_m0; // If false, set up non-0 temperature start value
 
   // State-based outputs, maintained by the driver.  These are
   // conceptually public, but are specified private to force

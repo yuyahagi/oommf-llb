@@ -55,7 +55,6 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> Ms01, Ms02;  // Saturation magnetization
   mutable Oxs_MeshValue<OC_REAL8m> Ms01_inverse, Ms02_inverse;  // 1/Ms0
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
-  OC_BOOL normalize_m0; // If false, set up non-0 temperature start value
 
   // Additional outputs for sublattices
   Oxs_VectorFieldOutput<YY_2LatDriver> spin1_output;

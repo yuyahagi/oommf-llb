@@ -108,7 +108,8 @@ Oxs_Driver::Oxs_Driver
       problem_status(OXSDRIVER_PS_INVALID),
       start_iteration(0),start_stage(0),start_stage_iteration(0),
       start_stage_start_time(0.),start_stage_elapsed_time(0.),
-      start_last_timestep(0.)
+      start_last_timestep(0.),
+      normalize_m0(0)
 {
   // Reserve state space in director
   director->ReserveSimulationStateRequest(2);
@@ -164,6 +165,13 @@ Oxs_Driver::Oxs_Driver
   OXS_GET_INIT_EXT_OBJECT("Ms",Oxs_ScalarField,Msinit);
 
   OXS_GET_INIT_EXT_OBJECT("m0",Oxs_VectorField,m0);
+
+  // Should m01 and m02 be normalized (starting T = 0K)?
+  if(GetIntInitValue("normalize_m0",1)) {
+    normalize_m0 = 1;
+  } else {
+    normalize_m0 = 0;
+  }
 
   // Fill Ms and Ms_inverse array, and verify that Ms is non-negative.
   Msinit->FillMeshValue(mesh_obj.GetPtr(),Ms0);
@@ -636,9 +644,20 @@ void Oxs_Driver::SetStartValues (Oxs_Key<Oxs_SimState>& initial_state) const
     istate.Ms = &Ms;
     istate.Ms_inverse = &Ms_inverse;
     m0->FillMeshValue(istate.mesh,istate.spin);
-    // Insure that all spins are unit vectors
     OC_INDEX size = istate.spin.Size();
-    for(OC_INDEX i=0;i<size;i++) istate.spin[i].MakeUnit();
+    if(!normalize_m0) {
+      // Set up values for non-zero temperature start
+      for(OC_INDEX i=0;i<size;i++) {
+        OC_REAL8m mag = sqrt(istate.spin[i].MagSq());
+        if(mag > 1.0) {
+          throw Oxs_ExtError(this, "Initialization error: magnetization"
+              " polarization larger than 1 is specified");
+        }
+        (*istate.Ms)[i] = mag*(*istate.Ms0)[i];
+        // Insure that all spins are unit vectors
+        istate.spin[i].MakeUnit();
+      }
+    }
 
     initial_state.GetReadReference();
   }
