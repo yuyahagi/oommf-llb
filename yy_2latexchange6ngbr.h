@@ -95,6 +95,8 @@ private:
   mutable Oxs_MeshValue<OC_REAL8m> G1, G2;
   mutable Oxs_MeshValue<OC_REAL8m> Lambdai11, Lambdai12, Lambdai21, Lambdai22;
 
+  void Update_chi_l(const Oxs_SimState& state);
+
   // Supplied outputs, in addition to those provided by Oxs_Energy.
   Oxs_ScalarOutput<YY_2LatExchange6Ngbr> maxspinangle_output;
   Oxs_ScalarOutput<YY_2LatExchange6Ngbr> stage_maxspinangle_output;

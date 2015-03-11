@@ -637,17 +637,16 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
             " = 0 (T > Tc).");
       } else {
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
-        OC_REAL8m LambdaiAB = fabs((*m_eA)[i]*(*m_eB)[i])
-          *fabs((*J0AB)[i])/((*m_eA)[i]*(*m_eA)[i]*(*muA)[i]*MU0);
+        OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
+          *fabs((*J0AB)[i])/((*m_eA)[i]*(*muA)[i]*MU0);
         ThreeVector PB = baseA^baseB;
         PB ^= baseA;
         PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
         ThreeVector tauB = baseA;
         tauB *= baseB*baseA;  // Dot product
         tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // tauB = nA(mB dot nA)
-        OC_REAL8m taueBsq = (*m_eA)[i]*(*m_eB)[i];
+        OC_REAL8m taueBsq = (*m_eB)[i];
         taueBsq = taueBsq*taueBsq;
-        taueBsq /= (*m_eA)[i]*(*m_eA)[i];
         sum_l += ( 0.5*LambdaiAA
             *( (*MsA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i]*(*Ms0A_inverse)[i]/((*m_eA)[i]*(*m_eA)[i])-1.0 )
             - 0.5*LambdaiAB*(tauB.MagSq()/taueBsq-1.0) )
@@ -1108,8 +1107,8 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
             +(mu2[i]/mu1[i])*fabs(J012[i])*dL2*(-J01[i]*dL1) )
         /( (J01[i]*dL1*J02[i]*dL2)
             -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
-      chi_l1[i] = MU0*mu1[i]/fabs(J021[i])*G1[i];
-      chi_l2[i] = MU0*mu1[i]/fabs(J021[i])*G2[i];
+      chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
+      chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
 
       Tc1[i] = (J01[i]+fabs(J012[i]))/(3*KB);
       Tc2[i] = (J02[i]+fabs(J021[i]))/(3*KB);
@@ -1151,10 +1150,10 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
 
     dL1 = LangevinDeriv(A11*x1+A12*x2);
     dL2 = LangevinDeriv(A21*x1+A22*x2);
-    G1[i] = ( fabs(A21*A12)*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
-      /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
-    G2[i] = ( fabs(A21*A12)*dL1*dL2 + (mu2[i]/mu1[i])*fabs(A12)*dL2*(1-A11*dL1) )
-      /( (1-A11*dL1)*(1-A22*dL2) - fabs(A21*A12)*dL1*dL2 );
+    G1[i] = ( A21*A12*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
+      /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
+    G2[i] = ( A21*A12*dL1*dL2 + (mu2[i]/mu1[i])*A12*dL2*(1-A11*dL1) )
+      /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
     chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
     chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
 
@@ -1185,6 +1184,51 @@ OC_REAL8m YY_2LatExchange6Ngbr::LangevinDeriv(OC_REAL8m x) const
   OC_REAL8m temp = sinh(x);
   if(!Nb_IsFinite(temp)) return 1.0/(x*x); // Large input
   return -1.0/(temp*temp)+1.0/(x*x);
+}
+
+void YY_2LatExchange6Ngbr::Update_chi_l(const Oxs_SimState& state)
+{
+  const OC_REAL8m size = state.mesh->Size();
+  const Oxs_MeshValue<OC_REAL8m>& Ms1 = *(state.lattice1->Ms);
+  const Oxs_MeshValue<OC_REAL8m>& Ms2 = *(state.lattice2->Ms);
+  const Oxs_MeshValue<OC_REAL8m>& Ms01_inverse = *(state.lattice1->Ms0_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& Ms02_inverse = *(state.lattice2->Ms0_inverse);
+
+  OC_REAL8m kB_T, beta;
+  OC_REAL8m A11, A12, A21, A22;
+  OC_REAL8m m1, m2, dL1, dL2;
+
+  for(OC_INDEX i=0; i<size; i++) {
+    kB_T = KB*(*(state.lattice1->T))[i];
+    if(kB_T == 0) {
+      dL1 = dL2 = 1.0;
+      G1[i] = ( fabs(J021[i])*fabs(J012[i]) - mu1[i]/mu2[i]*fabs(J021[i])*J02[i] )
+        /( J01[i]*J02[i] - fabs(J021[i]*J012[i]) );
+      G2[i] = ( fabs(J021[i])*fabs(J012[i]) - mu2[i]/mu1[i]*fabs(J012[i])*J01[i] )
+        /( J01[i]*J02[i] - fabs(J021[i]*J012[i]) );
+      chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
+      chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
+
+    } else {
+      beta = 1.0/kB_T;
+      A11 = beta*J01[i];
+      A12 = beta*fabs(J012[i]);
+      A21 = beta*fabs(J021[i]);
+      A22 = beta*J02[i];
+      m1 = Ms1[i]*Ms01_inverse[i];
+      m2 = Ms2[i]*Ms02_inverse[i];
+      dL1 = LangevinDeriv(A11*m1+A12*m2);
+      dL2 = LangevinDeriv(A21*m1+A22*m2);
+
+      G1[i] = ( A21*A12*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
+        /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
+      G2[i] = ( A21*A12*dL1*dL2 + (mu2[i]/mu1[i])*A12*dL2*(1-A11*dL1) )
+        /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
+
+      chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
+      chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
+    }
+  }
 }
 
 void YY_2LatExchange6Ngbr::UpdateDerivedOutputs(const Oxs_SimState& state)
