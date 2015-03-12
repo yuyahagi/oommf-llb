@@ -800,14 +800,17 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkInitialize
     }
 
     // Tc is also updated after calculation of m_e, chi_l
-    Update_m_e_chi_l(*(state.total_lattice), 1e-4);
+    Update_m_e(*(state.total_lattice), 1e-4);
   }
 
   if(state.stage_number != last_stage_number) { // New stage
     last_stage_number = state.stage_number;
-    Update_m_e_chi_l(*(state.total_lattice), 1e-4);
+    Update_m_e(*(state.total_lattice), 1e-4);
   }
 
+  // chi_l depends on instantaneous magnetization 
+  // so calculate it at each step
+  Update_chi_l(*(state.total_lattice));
 
   if(maxdot.size() != (vector<OC_REAL8m>::size_type)number_of_threads) {
     maxdot.resize(number_of_threads);
@@ -1075,7 +1078,7 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunk
   }
 }
 
-void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
+void YY_2LatExchange6Ngbr::Update_m_e(
     const Oxs_SimState& state,  // Total lattice state
     OC_REAL8m tol_in = 1e-4) const
 {
@@ -1096,19 +1099,6 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
     if(kB_T == 0) {
       m_e1[i]=1.0;
       m_e2[i]=1.0;
-
-      dL1 = LangevinDeriv(A11+A12);
-      dL2 = LangevinDeriv(A21+A22);
-      G1[i] = ( fabs(J021[i])*fabs(J012[i])*dL1*dL2
-            +(mu1[i]/mu2[i])*fabs(J021[i])*dL1*(-J02[i]*dL2) )
-        /( (J01[i]*dL1*J02[i]*dL2)
-            -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
-      G2[i] = ( fabs(J021[i])*fabs(J012[i])*dL1*dL2
-            +(mu2[i]/mu1[i])*fabs(J012[i])*dL2*(-J01[i]*dL1) )
-        /( (J01[i]*dL1*J02[i]*dL2)
-            -fabs(J021[i])*fabs(J012[i])*dL1*dL2 );
-      chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
-      chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
 
       Tc1[i] = (J01[i]+fabs(J012[i]))/(3*KB);
       Tc2[i] = (J02[i]+fabs(J021[i]))/(3*KB);
@@ -1148,15 +1138,6 @@ void YY_2LatExchange6Ngbr::Update_m_e_chi_l(
     m_e1[i] = x1>0 ? x1 : 0.0;
     m_e2[i] = x2>0 ? x2 : 0.0;
 
-    dL1 = LangevinDeriv(A11*x1+A12*x2);
-    dL2 = LangevinDeriv(A21*x1+A22*x2);
-    G1[i] = ( A21*A12*dL1*dL2 + (mu1[i]/mu2[i])*A21*dL1*(1-A22*dL2) )
-      /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
-    G2[i] = ( A21*A12*dL1*dL2 + (mu2[i]/mu1[i])*A12*dL2*(1-A11*dL1) )
-      /( (1-A11*dL1)*(1-A22*dL2) - A21*A12*dL1*dL2 );
-    chi_l1[i] = MU0*mu2[i]/fabs(J021[i])*G1[i];
-    chi_l2[i] = MU0*mu1[i]/fabs(J012[i])*G2[i];
-
     if(m_e1[i]>tol && m_e2[i]>tol) {
       Tc1[i] = (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i]);
       Tc2[i] = (J02[i]*m_e2[i]+fabs(J021[i])*m_e1[i])/(3*KB*m_e2[i]);
@@ -1186,7 +1167,7 @@ OC_REAL8m YY_2LatExchange6Ngbr::LangevinDeriv(OC_REAL8m x) const
   return -1.0/(temp*temp)+1.0/(x*x);
 }
 
-void YY_2LatExchange6Ngbr::Update_chi_l(const Oxs_SimState& state)
+void YY_2LatExchange6Ngbr::Update_chi_l(const Oxs_SimState& state) const
 {
   const OC_REAL8m size = state.mesh->Size();
   const Oxs_MeshValue<OC_REAL8m>& Ms1 = *(state.lattice1->Ms);
