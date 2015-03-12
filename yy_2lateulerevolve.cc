@@ -510,6 +510,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
       OC_REAL8m cell_msq = cell_m*cell_m;
       temp *= -cell_gamma*cell_alpha_l;
+      temp /= cell_m;
       scratch_l = temp*spin_[i];
       //if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
       //  // scratch_l || spin_[i]

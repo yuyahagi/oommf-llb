@@ -639,18 +639,23 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
           *fabs((*J0AB)[i])/((*m_eA)[i]*(*muA)[i]*MU0);
+        OC_REAL8m miA = MsiA*(*Ms0A_inverse)[i];
         ThreeVector PB = baseA^baseB;
         PB ^= baseA;
         PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
-        ThreeVector tauB = baseA;
-        tauB *= baseB*baseA;  // Dot product
-        tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // tauB = nA(mB dot nA)
-        OC_REAL8m taueBsq = (*m_eB)[i];
-        taueBsq = taueBsq*taueBsq;
-        sum_l += ( 0.5*LambdaiAA
-            *( (*MsA)[i]*(*MsA)[i]*(*Ms0A_inverse)[i]*(*Ms0A_inverse)[i]/((*m_eA)[i]*(*m_eA)[i])-1.0 )
-            - 0.5*LambdaiAB*(tauB.MagSq()/taueBsq-1.0) )
-          *baseA*(*MsA)[i]*(*Ms0A_inverse)[i];
+        OC_REAL8m tauB = abs(baseB*baseA);  // Dot product
+        tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // |tauB| = mB dot nA
+
+        OC_REAL8m beta = 1.0/(KB*(*state.T)[i]);
+        OC_REAL8m A_AA, A_AB;
+        if(state.lattice_type==Oxs_SimState::LATTICE1) {
+          A_AA = beta*J01[i]; A_AB = beta*fabs(J012[i]);
+        } else {
+          A_AA = beta*J02[i]; A_AB = beta*fabs(J021[i]);
+        }
+        OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
+        OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
+        sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA*miA;
 
         sum += (*J0AB)[i]/(*muA)[i]*PB;
         sum *= -0.5*MsiA;  // This will be divided by MsiA at the end.
