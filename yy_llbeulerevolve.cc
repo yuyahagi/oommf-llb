@@ -83,6 +83,8 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
     energy_state_id(0),next_timestep(0.),
     KBoltzmann(1.38062e-23),
     iteration_Tcalculated(0),
+    Ms_ptr_A(0), Ms_ptr_B(0),
+    Ms_inverse_ptr_A(0), Ms_inverse_ptr_B(0),
     has_tempscript(0),
     last_stage_number(0)
 {
@@ -243,6 +245,8 @@ OC_BOOL YY_LLBEulerEvolve::Init()
   new_energy.Release();
   new_dm_dt_t.Release();
   new_dm_dt_l.Release();
+  Ms_B.Release();
+  Ms_inverse_B.Release();
 
   hFluct_t.Release(); hFluct_l.Release();
   hFluctVarConst_t.Release(); hFluctVarConst_l.Release();
@@ -330,6 +334,14 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
     alpha_l.AdjustSize(mesh_);
     hFluctVarConst_t.AdjustSize(mesh_);
     hFluctVarConst_l.AdjustSize(mesh_);
+
+    // Prepare temporary Ms mesh value array and pointers
+    Ms_B.AdjustSize(mesh_);
+    Ms_inverse_B.AdjustSize(mesh_);
+    Ms_ptr_A = state_.Ms;
+    Ms_ptr_B = &Ms_B;
+    Ms_inverse_ptr_A = state_.Ms_inverse;
+    Ms_inverse_ptr_B = &Ms_inverse_B;
 
     // Other mesh value arrays
     total_field.AdjustSize(mesh_);
@@ -509,6 +521,19 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   Oxs_SimState& workstate = next_state.GetWriteReference();
   driver->FillState(cstate,workstate);
 
+  // FillState copies Ms pointer in simulation states. Fix this.
+  if(cstate.Ms==Ms_ptr_A) {
+    workstate.Ms = Ms_ptr_B;
+    workstate.Ms_inverse = Ms_inverse_ptr_B;
+  } else {
+    workstate.Ms = Ms_ptr_A;
+    workstate.Ms_inverse = Ms_inverse_ptr_A;
+  }
+  for(OC_INDEX i=0; i<cstate.mesh->Size(); i++) {
+    (*workstate.Ms)[i] = (*cstate.Ms)[i];
+    (*workstate.Ms_inverse)[i] = (*cstate.Ms_inverse)[i];
+  }
+
   if(cstate.mesh->Id() != workstate.mesh->Id()) {
     throw Oxs_Ext::Error(this,
         "YY_LLBEulerEvolve::Step: Oxs_Mesh not fixed across steps.");
@@ -614,8 +639,6 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
   // Put new spin configuration in next_state
   workstate.spin.AdjustSize(workstate.mesh); // Safety
   size = workstate.spin.Size();
-  const Oxs_MeshValue<OC_REAL8m>& cMs = *(cstate.Ms);
-  const Oxs_MeshValue<OC_REAL8m>& cMs_inverse = *(cstate.Ms_inverse);
   Oxs_MeshValue<OC_REAL8m>& wMs = *(workstate.Ms);
   Oxs_MeshValue<OC_REAL8m>& wMs_inverse = *(workstate.Ms_inverse);
   ThreeVector tempspin;
@@ -641,7 +664,6 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
 
     // Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
-    // Notes: This changes cMs too. Watch out.
     OC_REAL8m Ms_temp = wMs[i];
     wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
     if(wMs[i] <= 0.0) {

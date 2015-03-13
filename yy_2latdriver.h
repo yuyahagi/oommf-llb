@@ -50,8 +50,10 @@ private:
   Oxs_ConstKey<Oxs_SimState> current_state1;
   Oxs_ConstKey<Oxs_SimState> current_state2;
 
-  mutable Oxs_MeshValue<OC_REAL8m> Ms1, Ms2;  // Saturation magnetization
-  mutable Oxs_MeshValue<OC_REAL8m> Ms1_inverse, Ms2_inverse;  // 1/Ms
+  mutable Oxs_MeshValue<OC_REAL8m> Ms1_A, Ms2_A;  // Saturation magnetization
+  mutable Oxs_MeshValue<OC_REAL8m> Ms1_B, Ms2_B, Ms_B;
+  mutable Oxs_MeshValue<OC_REAL8m> Ms1_inverse_A, Ms2_inverse_A;
+  mutable Oxs_MeshValue<OC_REAL8m> Ms2_inverse_B, Ms1_inverse_B, Ms_inverse_B;
   mutable Oxs_MeshValue<OC_REAL8m> Ms01, Ms02;  // Saturation magnetization
   mutable Oxs_MeshValue<OC_REAL8m> Ms01_inverse, Ms02_inverse;  // 1/Ms0
   Oxs_OwnedPointer<Oxs_VectorField> m01, m02; // Initial spin configuration
@@ -169,6 +171,18 @@ public:
     this->Run(results,1); // Call internal Run interface with default
     // stage increment (==1).
   }
+
+  virtual void FillStateMemberData(const Oxs_SimState& old_state,
+                                   Oxs_SimState& new_state) const;
+  virtual void FillNewStageStateMemberData(const Oxs_SimState& old_state,
+                                     int new_stage_number,
+                                     Oxs_SimState& new_state) const;
+  // FillStateMemberData and FillNewStageStateMemberData copies pointer to
+  // Ms and Ms_inverse arrays from old_state to new_state. In LLB
+  // simulations, we need different MeshValue array for the new state in
+  // order to store trial Ms while keeping the original value. The
+  // overriding functions here assigns alternating arrays (*_A and *_B) to
+  // the new_state.
 
   virtual OC_BOOL InitNewStage(
       Oxs_ConstKey<Oxs_SimState> state,

@@ -108,6 +108,12 @@ private:
   Oxs_MeshValue<OC_REAL8m> energy;
   OC_REAL8m next_timestep;
 
+  // Ms MeshValue array for the new state. This is required in order to
+  // store trial Ms values while keeping the original Ms.
+  Oxs_MeshValue<OC_REAL8m> Ms_B, Ms_inverse_B;
+  Oxs_MeshValue<OC_REAL8m> *Ms_ptr_A, *Ms_ptr_B;
+  Oxs_MeshValue<OC_REAL8m> *Ms_inverse_ptr_A, *Ms_inverse_ptr_B;
+
   // Scratch space
   Oxs_MeshValue<OC_REAL8m> new_energy;
   Oxs_MeshValue<ThreeVector> new_dm_dt_t;

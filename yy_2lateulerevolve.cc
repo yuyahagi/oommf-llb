@@ -785,7 +785,6 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
     // Update Ms in the next state.
     // Both of wMs and wMs_inverse should be updated at the same time.
-    // Notes: This changes Ms in cstate too. Watch out.
     OC_REAL8m Ms_temp = wMs1[i];
     wMs1[i] = sqrt(tempspin.MagSq())*Ms_temp;
     if(wMs1[i] <= 0.0) {
@@ -830,7 +829,6 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
     // Update Ms in the next state.
     // Both of wMs2 and wMs_inverse2 should be updated at the same time.
-    // Notes: This changes Ms in cstate2 too. Watch out.
     OC_REAL8m Ms_temp = wMs2[i];
     wMs2[i] = sqrt(tempspin.MagSq())*Ms_temp;
     if(wMs2[i] <= 0.0) {

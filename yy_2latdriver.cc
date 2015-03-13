@@ -62,41 +62,47 @@ YY_2LatDriver::YY_2LatDriver
   OXS_GET_INIT_EXT_OBJECT("m01",Oxs_VectorField,m01);
   OXS_GET_INIT_EXT_OBJECT("m02",Oxs_VectorField,m02);
 
-  Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms1);
+  Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms1_A);
   Ms1init->FillMeshValue(mesh_obj.GetPtr(),Ms01);
-  Ms2init->FillMeshValue(mesh_obj.GetPtr(),Ms2);
+  Ms2init->FillMeshValue(mesh_obj.GetPtr(),Ms2_A);
   Ms2init->FillMeshValue(mesh_obj.GetPtr(),Ms02);
-  Ms1_inverse.AdjustSize(mesh_obj.GetPtr());
+  Ms_B.AdjustSize(mesh_obj.GetPtr());
+  Ms1_B.AdjustSize(mesh_obj.GetPtr());
+  Ms2_B.AdjustSize(mesh_obj.GetPtr());
+  Ms1_inverse_A.AdjustSize(mesh_obj.GetPtr());
+  Ms1_inverse_B.AdjustSize(mesh_obj.GetPtr());
   Ms01_inverse.AdjustSize(mesh_obj.GetPtr());
-  Ms2_inverse.AdjustSize(mesh_obj.GetPtr());
+  Ms2_inverse_A.AdjustSize(mesh_obj.GetPtr());
+  Ms2_inverse_B.AdjustSize(mesh_obj.GetPtr());
+  Ms_inverse_B.AdjustSize(mesh_obj.GetPtr());
   Ms02_inverse.AdjustSize(mesh_obj.GetPtr());
 
   for(OC_INDEX icell=0;icell<mesh_obj->Size();icell++) {
-    if(Ms1[icell]<0.0) {
+    if(Ms1_A[icell]<0.0) {
       char buf[1024];
       Oc_Snprintf(buf,sizeof(buf),
                   "Negative Ms1 value (%g) detected at mesh index %u.",
-                  static_cast<double>(Ms1[icell]),icell);
+                  static_cast<double>(Ms1_A[icell]),icell);
       throw Oxs_ExtError(this,String(buf));
-    } else if(Ms1[icell]==0.0) {
-      Ms1_inverse[icell]=0.0; // Special case handling
+    } else if(Ms1_A[icell]==0.0) {
+      Ms1_inverse_A[icell]=0.0; // Special case handling
       Ms01_inverse[icell]=0.0;
     } else {
-      Ms1_inverse[icell]=1.0/Ms1[icell];
+      Ms1_inverse_A[icell]=1.0/Ms1_A[icell];
       Ms01_inverse[icell]=1.0/Ms01[icell];
     }
 
-    if(Ms2[icell]<0.0) {
+    if(Ms2_A[icell]<0.0) {
       char buf[1024];
       Oc_Snprintf(buf,sizeof(buf),
                   "Negative Ms2 value (%g) detected at mesh index %u.",
-                  static_cast<double>(Ms2[icell]),icell);
+                  static_cast<double>(Ms2_A[icell]),icell);
       throw Oxs_ExtError(this,String(buf));
-    } else if(Ms2[icell]==0.0) {
-      Ms2_inverse[icell]=0.0; // Special case handling
+    } else if(Ms2_A[icell]==0.0) {
+      Ms2_inverse_A[icell]=0.0; // Special case handling
       Ms02_inverse[icell]=0.0;
     } else {
-      Ms2_inverse[icell]=1.0/Ms2[icell];
+      Ms2_inverse_A[icell]=1.0/Ms2_A[icell];
       Ms02_inverse[icell]=1.0/Ms02[icell];
     }
   }
@@ -203,14 +209,14 @@ void YY_2LatDriver::SetStartValues(
     istate.Ms_inverse = &Ms_inverse;
     istate.Ms0_inverse = &Ms0_inverse;
     m0->FillMeshValue(istate.mesh,istate.spin);
-    istate1.Ms = &Ms1;
+    istate1.Ms = &Ms1_A;
     istate1.Ms0 = &Ms01;
-    istate1.Ms_inverse = &Ms1_inverse;
+    istate1.Ms_inverse = &Ms1_inverse_A;
     istate1.Ms0_inverse = &Ms01_inverse;
     m01->FillMeshValue(istate1.mesh,istate1.spin);
-    istate2.Ms = &Ms2;
+    istate2.Ms = &Ms2_A;
     istate2.Ms0 = &Ms02;
-    istate2.Ms_inverse = &Ms2_inverse;
+    istate2.Ms_inverse = &Ms2_inverse_A;
     istate2.Ms0_inverse = &Ms02_inverse;
     m02->FillMeshValue(istate2.mesh,istate2.spin);
 
@@ -790,6 +796,79 @@ void YY_2LatDriver::Run(vector<OxsRunEvent>& results,
   }
   if(done_event) {
     results.push_back(OxsRunEvent(OXS_RUN_DONE_EVENT,current_state));
+  }
+}
+
+void YY_2LatDriver::FillStateMemberData(const Oxs_SimState& old_state,
+                                 Oxs_SimState& new_state) const
+{
+  Oxs_Driver::FillStateMemberData(old_state, new_state);
+
+  // FillStateMemberData copies Ms pointer. Replace it.
+  Oxs_MeshValue<OC_REAL8m> *MsA, *Ms_inverseA, *MsB, *Ms_inverseB;
+  switch(old_state.lattice_type) {
+  case Oxs_SimState::TOTAL:
+    MsA = &Ms; Ms_inverseA = &Ms_inverse;
+    MsB = &Ms_B; Ms_inverseB = &Ms_inverse_B;
+    break;
+  case Oxs_SimState::LATTICE1:
+    MsA = &Ms1_A; Ms_inverseA = &Ms1_inverse_A;
+    MsB = &Ms1_B; Ms_inverseB = &Ms1_inverse_B;
+    break;
+  case Oxs_SimState::LATTICE2:
+    MsA = &Ms2_A; Ms_inverseA = &Ms2_inverse_A;
+    MsB = &Ms2_B; Ms_inverseB = &Ms2_inverse_B;
+    break;
+  }
+
+  if(old_state.Ms == MsA) {
+    new_state.Ms = MsB;
+    new_state.Ms_inverse = Ms_inverseB;
+  } else {
+    new_state.Ms = MsA;
+    new_state.Ms_inverse = Ms_inverseA;
+  }
+
+  for(OC_INDEX i=0; i<new_state.mesh->Size(); i++) {
+    (*new_state.Ms)[i] = (*old_state.Ms)[i];
+    (*new_state.Ms_inverse)[i] = (*old_state.Ms_inverse)[i];
+  }
+}
+
+void YY_2LatDriver::FillNewStageStateMemberData(const Oxs_SimState& old_state,
+                                   int new_stage_number,
+                                   Oxs_SimState& new_state) const
+{
+  Oxs_Driver::FillNewStageStateMemberData(old_state, new_stage_number, new_state);
+
+  // FillStateMemberData copies Ms pointer. Replace it.
+  Oxs_MeshValue<OC_REAL8m> *MsA, *Ms_inverseA, *MsB, *Ms_inverseB;
+  switch(old_state.lattice_type) {
+  case Oxs_SimState::TOTAL:
+    MsA = &Ms; Ms_inverseA = &Ms_inverse;
+    MsB = &Ms_B; Ms_inverseB = &Ms_inverse_B;
+    break;
+  case Oxs_SimState::LATTICE1:
+    MsA = &Ms1_A; Ms_inverseA = &Ms1_inverse_A;
+    MsB = &Ms1_B; Ms_inverseB = &Ms1_inverse_B;
+    break;
+  case Oxs_SimState::LATTICE2:
+    MsA = &Ms2_A; Ms_inverseA = &Ms2_inverse_A;
+    MsB = &Ms2_B; Ms_inverseB = &Ms2_inverse_B;
+    break;
+  }
+
+  if(old_state.Ms == MsA) {
+    new_state.Ms = MsB;
+    new_state.Ms_inverse = Ms_inverseB;
+  } else {
+    new_state.Ms = MsA;
+    new_state.Ms_inverse = Ms_inverseA;
+  }
+
+  for(OC_INDEX i=0; i<new_state.mesh->Size(); i++) {
+    (*new_state.Ms)[i] = (*old_state.Ms)[i];
+    (*new_state.Ms_inverse)[i] = (*old_state.Ms_inverse)[i];
   }
 }
 
