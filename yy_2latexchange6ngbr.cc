@@ -655,7 +655,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         }
         OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
         OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
-        sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA*miA;
+        sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
 
         sum += (*J0AB)[i]/(*muA)[i]*PB;
         sum *= -0.5*MsiA;  // This will be divided by MsiA at the end.

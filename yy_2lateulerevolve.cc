@@ -484,7 +484,6 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 
       if(do_precess) {
         dm_dt_t_[i]  = scratch_t;
-        dm_dt_t_[i]  *= Ms_[i]*Ms0_inverse_[i];
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       } else {
         dm_dt_t_[i].Set(0.0,0.0,0.0);
