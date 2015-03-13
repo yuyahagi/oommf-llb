@@ -477,6 +477,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       OC_REAL8m cell_alpha_t = (*alpha_t)[i];
       OC_REAL8m cell_alpha_l = (*alpha_l)[i];
       OC_REAL8m cell_gamma = (*gamma)[i];
+      OC_REAL8m cell_m_inverse = Ms0_[i]*Ms_inverse_[i];
 
       // deterministic part
       scratch_t = mxH_[i];
@@ -501,20 +502,14 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       }
       scratch_t ^= spin_[i];
       // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
-      scratch_t *= -cell_alpha_t*Ms0_[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
+      scratch_t *= -cell_alpha_t*cell_m_inverse; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
       OC_REAL8m temp = spin_[i]*total_field_[i];
-      OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
-      OC_REAL8m cell_msq = cell_m*cell_m;
       temp *= -cell_gamma*cell_alpha_l;
-      temp /= cell_m;
+      temp *= cell_m_inverse;
       scratch_l = temp*spin_[i];
-      //if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
-      //  // scratch_l || spin_[i]
-      //  scratch_l.MakeUnit();
-      //}
       dm_dt_l_[i] += scratch_l;
 
       if(temperature[i] != 0 && use_stochastic) {
@@ -769,8 +764,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
     // For improved accuracy, adjust step vector so that
     // to first order m0 + adjusted_step = v/|v| where
-    // v = m0 + step.  (????)
-    // maybe adjusted_mo + adjusted_step is meant here??
+    // v = m0 + step.
     OC_REAL8m adj = 0.5 * tempspin.MagSq();
     tempspin -= adj*cstate1.spin[i];
     tempspin *= 1.0/(1.0+adj);
@@ -813,8 +807,7 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
 
     // For improved accuracy, adjust step vector so that
     // to first order m0 + adjusted_step = v/|v| where
-    // v = m0 + step.  (????)
-    // maybe adjusted_mo + adjusted_step is meant here??
+    // v = m0 + step.
     OC_REAL8m adj = 0.5 * tempspin.MagSq();
     tempspin -= adj*cstate2.spin[i];
     tempspin *= 1.0/(1.0+adj);

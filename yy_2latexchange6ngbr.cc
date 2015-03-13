@@ -171,26 +171,14 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
     FindRequiredInitValue("lex2",params2);
     FindRequiredInitValue("lex12",params12);
   } else {
-#ifdef YY_DEBUG
-    std::cout << "Read initialization parameters A1 A2 A12." << endl;
-#endif
     excoeftype = A_TYPE;
     typestr = "A";
     default_coef1 = GetRealInitValue("default_A1",0.0);
     default_coef2 = GetRealInitValue("default_A2",0.0);
     default_coef12 = GetRealInitValue("default_A12",0.0);
-#ifdef YY_DEBUG
-    std::cout << "Find required init values." << endl;
-#endif
     FindRequiredInitValue("A1",params1);
     FindRequiredInitValue("A2",params2);
     FindRequiredInitValue("A12",params12);
-#ifdef YY_DEBUG
-    std::cout << "Found. Sizes are:" << endl;
-    std::cout<<"params1.size() = "<<params1.size()<<endl;
-    std::cout<<"params2.size() = "<<params2.size()<<endl;
-    std::cout<<"params12.size() = "<<params12.size()<<endl;
-#endif
   }
   if( params1.empty() || params2.empty() || params12.empty() ) {
     String msg = String("Empty parameter list for key \"")
@@ -209,9 +197,6 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
       throw Oxs_ExtError(this,buf);
   }
 
-#ifdef YY_DEBUG
-    std::cout << "Start allocation of A matrices." << endl;
-#endif
   // Allocate A matrix.  Because raw pointers are used, a memory leak
   // would occur if an uncaught exception occurred beyond this point.
   // So, we put the whole bit in a try-catch block.
@@ -517,7 +502,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
   const Oxs_MeshValue<OC_REAL8m> *MsA, *MsB;
   const Oxs_MeshValue<OC_REAL8m> *MsA_inverse, *MsB_inverse;
   const Oxs_MeshValue<OC_REAL8m> *Ms0A_inverse, *Ms0B_inverse;
-  const Oxs_MeshValue<OC_REAL8m> *J0AB;
+  const Oxs_MeshValue<OC_REAL8m> *J0A, *J0AB;
   const Oxs_MeshValue<OC_REAL8m> *muA, *muB;
   const Oxs_MeshValue<OC_REAL8m> *m_eA, *m_eB;
   const Oxs_MeshValue<OC_REAL8m> *chi_lA, *chi_lB;
@@ -539,6 +524,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
     Ms0B_inverse = state.lattice2->Ms0_inverse;
     coefA = coef1; coefB = coef2;
     muA = &mu1; muB = &mu2;
+    J0A = &J01;
     J0AB = &J012;
     m_eA = &m_e1; m_eB = &m_e2;
     chi_lA = &chi_l1; chi_lB = &chi_l2;
@@ -556,6 +542,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
     coefA = coef2;
     coefB = coef1;
     muA = &mu2; muB = &mu1;
+    J0A = &J02;
     J0AB = &J021;
     m_eA = &m_e2; m_eB = &m_e1;
     chi_lA = &chi_l2; chi_lB = &chi_l1;
@@ -646,16 +633,14 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_REAL8m tauB = abs(baseB*baseA);  // Dot product
         tauB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // |tauB| = mB dot nA
 
-        OC_REAL8m beta = 1.0/(KB*(*state.T)[i]);
-        OC_REAL8m A_AA, A_AB;
-        if(state.lattice_type==Oxs_SimState::LATTICE1) {
-          A_AA = beta*J01[i]; A_AB = beta*fabs(J012[i]);
-        } else {
-          A_AA = beta*J02[i]; A_AB = beta*fabs(J021[i]);
+        if((*state.T)[i]!=0.0) {
+          OC_REAL8m beta = 1.0/(KB*(*state.T)[i]);
+          OC_REAL8m A_AA = beta*fabs((*J0A)[i]);
+          OC_REAL8m A_AB = beta*fabs((*J0AB)[i]);
+          OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
+          OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
+          sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
         }
-        OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
-        OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
-        sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
 
         sum += (*J0AB)[i]/(*muA)[i]*PB;
         sum *= -0.5*MsiA;  // This will be divided by MsiA at the end.
