@@ -616,13 +616,17 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum(0.,0.,0.);
       ThreeVector sum_l(0.,0.,0.);
 
-      // Exchange with the other sublattice
-      if( (*m_eA)[i]<tol ) {
-        // At this point, calculation of exchange field is limited to T<Tc
-        // where m_e != 0.
-        throw Oxs_ExtError(this, "Cannot calculate exchange field with m_e"
-            " = 0 (T > Tc).");
+      if( (*m_eA)[i]<tol && (*state.T)[i]!=0.0 ) {
+        // For T>Tc, calculate effective longitudinal field of paramagnetic
+        // case but with Tc calculated in conjugation of sublattices.
+        // Similar approach adapted in Atxitia et al, Phys. Rev. Lett. 87, 
+        // 224417 (2013).
+        OC_REAL8m miA = MsiA*(*Ms0A_inverse)[i];
+        sum_l += (*J0A)[i]/(MU0*(*muA)[i])
+          *( 1-(*state.T)[i]/(*state.Tc)[i]-0.6*miA*miA )*miA*baseA;
+
       } else {
+        // Exchange with the other sublattice
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
           *fabs((*J0AB)[i])/((*m_eA)[i]*(*muA)[i]*MU0);
@@ -639,7 +643,9 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
           OC_REAL8m A_AB = beta*fabs((*J0AB)[i]);
           OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
           OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
-          sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
+          if(miA>tol) {
+            sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
+          }
         }
 
         sum += (*J0AB)[i]/(*muA)[i]*PB;

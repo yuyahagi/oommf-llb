@@ -512,9 +512,19 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
       scratch_l = temp*spin_[i];
       dm_dt_l_[i] += scratch_l;
 
+      // Check for overshooting
+      scratch_l = dm_dt_l_[i]*fixed_timestep;
+      scratch_l += spin_[i];
+      if( scratch_l*spin_[i]<0.0 ) {
+        dm_dt_l_[i] = -1*spin_[i];
+        dm_dt_l_[i].x /= fixed_timestep;
+        dm_dt_l_[i].y /= fixed_timestep;
+        dm_dt_l_[i].z /= fixed_timestep;
+      }
+
       if(temperature[i] != 0 && use_stochastic) {
         // Longitudinal stochastic field parallel to spin
-        dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
+        dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*cell_m_inverse;
       }
     }
   }
@@ -780,10 +790,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     // Both of wMs and wMs_inverse should be updated at the same time.
     OC_REAL8m Ms_temp = wMs1[i];
     wMs1[i] = sqrt(tempspin.MagSq())*Ms_temp;
-    if(wMs1[i] <= 0.0) {
-      // If spin overshoots to the opposite direction with stochastic kick,
-      // keep Ms positive and flip spin direction.
-      wMs1[i] *= -1;
+    if(tempspin*cstate1.spin[i]<0.0) {  // Dot product
+      // If spin overshoots to the opposite direction, keep Ms positive
+      // and flip spin direction.
       workstate1.spin[i] *= -1;
     }
     if(wMs1[i] > (*cstate1.Ms0)[i]) {
@@ -823,10 +832,9 @@ YY_2LatEulerEvolve::Step(const YY_2LatTimeDriver* driver,
     // Both of wMs2 and wMs_inverse2 should be updated at the same time.
     OC_REAL8m Ms_temp = wMs2[i];
     wMs2[i] = sqrt(tempspin.MagSq())*Ms_temp;
-    if(wMs2[i] <= 0.0) {
-      // If spin overshoots to the opposite direction with stochastic kick,
-      // keep Ms positive and flip spin direction.
-      wMs2[i] *= -1;
+    if(tempspin*cstate2.spin[i]<0.0) {  // Dot product
+      // If spin overshoots to the opposite direction, keep Ms positive
+      // and flip spin direction.
       workstate2.spin[i] *= -1;
     }
     if(wMs2[i] > (*cstate2.Ms0)[i]) {
