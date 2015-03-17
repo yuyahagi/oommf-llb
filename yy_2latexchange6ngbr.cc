@@ -613,6 +613,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       OC_REAL8m* ArowA = coefA[region_id[i]];
       OC_REAL8m* ArowB = coefB[region_id[i]];
       OC_REAL8m* ArowAB = coef12[region_id[i]];
+      OC_REAL8m miA = (*MsA)[i]*(*Ms0A_inverse)[i];
       ThreeVector sum(0.,0.,0.);
       ThreeVector sum_l(0.,0.,0.);
 
@@ -621,7 +622,6 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
           *fabs((*J0AB)[i])/((*m_eA)[i]*(*muA)[i]*MU0);
-        OC_REAL8m miA = MsiA*(*Ms0A_inverse)[i];
         ThreeVector PB = baseA^baseB;
         PB ^= baseA;
         PB *= (*MsB)[i]*(*Ms0B_inverse)[i]; // PB = -nA x (nA x mB)
@@ -647,9 +647,9 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_INDEX j = i-xydim;
         if(z==0) j += xyzdim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
         if(ApairA!=0 && (*MsA_inverse)[j]!=0.0) {
-          ThreeVector diffA = ((*spinA)[j] - baseA);
+          ThreeVector diffA = ((*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA);
           OC_REAL8m dot = diffA.MagSq();
           sum += ApairA*wgtz*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -659,9 +659,9 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_INDEX j = i-xdim;
         if(y==0) j += xydim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
         if(ApairA!=0.0 && (*MsA_inverse)[j]!=0.0) {
-          ThreeVector diffA = ((*spinA)[j] - baseA);
+          ThreeVector diffA = ((*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA);
           OC_REAL8m dot = diffA.MagSq();
           sum += ApairA*wgty*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -671,9 +671,9 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_INDEX j = i-1;
         if(x==0) j += xdim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
         if(ApairA!=0.0 && (*MsA_inverse)[j]!=0.0) {
-          ThreeVector diffA = ((*spinA)[j] - baseA);
+          ThreeVector diffA = ((*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA);
           OC_REAL8m dot = diffA.MagSq();
           sum += ApairA*wgtx*diffA;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -683,22 +683,28 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
         OC_INDEX j = i+1;
         if(x==xdim-1) j -= xdim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
-        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgtx*((*spinA)[j] - baseA);
+        if((*MsA_inverse)[j]!=0.0) {
+          sum += ApairA*wgtx*( (*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA );
+        }
       }
       if(y<ydim-1 || yperiodic) {
         OC_INDEX j = i+xdim;
         if(y==ydim-1) j -= xydim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
-        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgty*((*spinA)[j] - baseA);
+        if((*MsA_inverse)[j]!=0.0) {
+          sum += ApairA*wgty*( (*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA );
+        }
       }
       if(z<zdim-1 || zperiodic) {
         OC_INDEX j = i+xydim;
         if(z==zdim-1) j -= xyzdim;
         OC_REAL8m ApairA = ArowA[region_id[j]];
-        OC_REAL8m ApairB = ArowB[region_id[j]];
-        if((*MsA_inverse)[j]!=0.0) sum += ApairA*wgtz*((*spinA)[j]- baseA);
+        if((*MsA_inverse)[j]!=0.0) {
+          sum += ApairA*wgtz*( (*MsA)[j]*(*Ms0A_inverse)[j]*(*spinA)[j] 
+              - miA*baseA );
+        }
       }
 
       OC_REAL8m ei = baseA.x*sum.x + baseA.y*sum.y + baseA.z*sum.z;
