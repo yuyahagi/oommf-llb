@@ -616,16 +616,16 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum(0.,0.,0.);
       ThreeVector sum_l(0.,0.,0.);
 
-      if( (*m_eA)[i]<tol && (*state.T)[i]!=0.0 ) {
+      /*if( (*m_eA)[i]<tol && (*state.T)[i]!=0.0 ) {
         // For T>Tc, calculate effective longitudinal field of paramagnetic
         // case but with Tc calculated in conjugation of sublattices.
         // Similar approach adapted in Atxitia et al, Phys. Rev. Lett. 87, 
         // 224417 (2013).
         OC_REAL8m miA = MsiA*(*Ms0A_inverse)[i];
-        sum_l += (*J0A)[i]/(MU0*(*muA)[i])
+        sum_l -= (*J0A)[i]/(MU0*(*muA)[i])
           *( 1-(*state.T)[i]/(*state.Tc)[i]-0.6*miA*miA )*miA*baseA;
 
-      } else {
+      } else */{
         // Exchange with the other sublattice
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
@@ -848,10 +848,10 @@ void YY_2LatExchange6Ngbr::ComputeEnergyChunkFinalize
     // purposes, but in general an error is raised only if results
     // from the recomputation are different than originally.
 #ifndef NDEBUG
-    static Oxs_WarningMessage maxangleset(3);
-    maxangleset.Send(revision_info,OC_STRINGIFY(__LINE__),
-                     "Programming error?"
-                     " YY_2LatExchange6Ngbr max spin angle set twice.");
+    //static Oxs_WarningMessage maxangleset(3);
+    //maxangleset.Send(revision_info,OC_STRINGIFY(__LINE__),
+    //                 "Programming error?"
+    //                 " YY_2LatExchange6Ngbr max spin angle set twice.");
 #endif
     // Max angle is computed by taking acos of the dot product
     // of neighboring spin vectors.  The relative error can be
@@ -1131,8 +1131,8 @@ void YY_2LatExchange6Ngbr::Update_m_e(
       y1 = Langevin(A11*x1+A12*x2)-x1;
       y2 = Langevin(A21*x1+A22*x2)-x2;
     } while( dx1*dx1>tolsq || dx2*dx2>tolsq );
-    m_e1[i] = x1>0 ? x1 : 0.0;
-    m_e2[i] = x2>0 ? x2 : 0.0;
+    m_e1[i] = x1>tol ? x1 : 0.0;
+    m_e2[i] = x2>tol ? x2 : 0.0;
 
     if(m_e1[i]>tol && m_e2[i]>tol) {
       Tc1[i] = (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i]);
