@@ -507,7 +507,7 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 
       // Longitudinal terms
       OC_REAL8m temp = spin_[i]*total_field_[i];
-      temp *= -cell_gamma*cell_alpha_l;
+      temp *= cell_gamma*cell_alpha_l;
       temp *= cell_m_inverse;
       scratch_l = temp*spin_[i];
       dm_dt_l_[i] += scratch_l;

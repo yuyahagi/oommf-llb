@@ -616,16 +616,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
       ThreeVector sum(0.,0.,0.);
       ThreeVector sum_l(0.,0.,0.);
 
-      /*if( (*m_eA)[i]<tol && (*state.T)[i]!=0.0 ) {
-        // For T>Tc, calculate effective longitudinal field of paramagnetic
-        // case but with Tc calculated in conjugation of sublattices.
-        // Similar approach adapted in Atxitia et al, Phys. Rev. Lett. 87, 
-        // 224417 (2013).
-        OC_REAL8m miA = MsiA*(*Ms0A_inverse)[i];
-        sum_l -= (*J0A)[i]/(MU0*(*muA)[i])
-          *( 1-(*state.T)[i]/(*state.Tc)[i]-0.6*miA*miA )*miA*baseA;
-
-      } else */{
+      {
         // Exchange with the other sublattice
         OC_REAL8m LambdaiAA = (1.0+(*GB)[i])/(*chi_lA)[i];
         OC_REAL8m LambdaiAB = fabs((*m_eB)[i])
@@ -644,7 +635,7 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
           OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
           OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
           if(miA>tol) {
-            sum_l += (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
+            sum_l -= (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
           }
         }
 
@@ -1084,6 +1075,11 @@ void YY_2LatExchange6Ngbr::Update_m_e(
   tol = fabs(tol_in);
   tolsq = tol_in*tol_in;
 
+  Oxs_MeshValue<OC_REAL8m>& Ms1 = *(state.lattice1->Ms);
+  Oxs_MeshValue<OC_REAL8m>& Ms2 = *(state.lattice2->Ms);
+  Oxs_MeshValue<OC_REAL8m>& Ms01_inverse = *(state.lattice1->Ms0_inverse);
+  Oxs_MeshValue<OC_REAL8m>& Ms02_inverse = *(state.lattice2->Ms0_inverse);
+
   OC_REAL8m A11, A12, A21, A22;
   OC_REAL8m x10, x20, y10, y20;
   OC_REAL8m x1, x2, y1, y2;
@@ -1134,9 +1130,12 @@ void YY_2LatExchange6Ngbr::Update_m_e(
     m_e1[i] = x1>tol ? x1 : 0.0;
     m_e2[i] = x2>tol ? x2 : 0.0;
 
+    OC_REAL8m m1 = Ms1[i]*Ms01_inverse[i];
+    OC_REAL8m m2 = Ms2[i]*Ms02_inverse[i];
+
     if(m_e1[i]>tol && m_e2[i]>tol) {
-      Tc1[i] = (J01[i]*m_e1[i]+fabs(J012[i])*m_e2[i])/(3*KB*m_e1[i]);
-      Tc2[i] = (J02[i]*m_e2[i]+fabs(J021[i])*m_e1[i])/(3*KB*m_e2[i]);
+      Tc1[i] = (J01[i]*m1+fabs(J012[i])*m2)/(3*KB*m1);
+      Tc2[i] = (J02[i]*m2+fabs(J021[i])*m1)/(3*KB*m2);
     } else {
       // MFA for T>Tc. See Eq. (10) in Ostler, PRB 84, 024407 (2011).
       const OC_REAL8m a = J012[i]*J021[i]-J01[i]*J02[i];
