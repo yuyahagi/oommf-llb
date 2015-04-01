@@ -634,7 +634,9 @@ void YY_2LatExchange6Ngbr::CalcEnergyA
           OC_REAL8m A_AB = beta*fabs((*J0AB)[i]);
           OC_REAL8m B = Langevin(A_AA*miA+A_AB*tauB);
           OC_REAL8m dB = LangevinDeriv(A_AA*miA+A_AB*tauB);
-          if(miA>tol) {
+          if( (*state.T)[i]<(*state.Tc)[i] || 1-B/miA>0 ) {
+            // This condition prevents unstable bursts of spin polarizations
+            // when m ~ 0.
             sum_l -= (1-B/miA)/(MU0*(*muA)[i]*beta*dB)*baseA;
           }
         }
