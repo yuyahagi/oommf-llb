@@ -327,13 +327,15 @@ void YY_2LatUniaxialAnisotropy::RectIntegEnergy
 
   for(OC_INDEX i=node_start;i<node_stop;++i) {
 
+    OC_REAL8m mi = (*state.Ms)[i]*(*state.Ms0_inverse)[i];
+    // Assume K1 proportional to m^3;
     if(aniscoeftype == K1_TYPE) {
       if(!K1_is_uniform) k = (*K1)[i];
-      k *= (*state.m_e)[i]*(*state.m_e)[i]*(*state.m_e)[i];
+      k *= mi*mi*mi;
       field_mult = (2.0/MU0)*k*Ms_inverse[i];
     } else {
       if(!Ha_is_uniform) field_mult = (*Ha)[i];
-      field_mult *= (*state.m_e)[i]*(*state.m_e)[i]*(*state.m_e)[i];
+      field_mult *= mi*mi*mi;
       k = 0.5*MU0*field_mult*Ms[i];
     }
     if(k==0.0 || field_mult == 0.0) { // Includes Ms==0.0 case
