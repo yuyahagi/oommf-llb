@@ -524,7 +524,8 @@ void YY_2LatEulerEvolve::Calculate_dm_dt(
 
       if(temperature[i] != 0 && use_stochastic) {
         // Longitudinal stochastic field parallel to spin
-        dm_dt_l_[i] += (*hFluct_l)[i].x*spin_[i]*cell_m_inverse;
+        dm_dt_l_[i] += (*hFluct_l)[i]*cell_m_inverse;
+        dm_dt_t_[i] += (*hFluct_l)[i]*cell_m_inverse;
       }
     }
   }
