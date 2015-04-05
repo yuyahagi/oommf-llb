@@ -99,6 +99,8 @@ YY_LLBExchange6Ngbr::YY_LLBExchange6Ngbr(
 			 " both A and lex specified; only one should"
 			 " be given.");
   } else if(has_lex) {
+    throw Oxs_ExtError(this,"CalcEnergyLex not implemented.");
+
     excoeftype = LEX_TYPE;
     typestr = "lex";
     default_coef = GetRealInitValue("default_lex",0.0);
@@ -244,7 +246,9 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
  ) const
 {
   const Oxs_MeshValue<ThreeVector>& spin = state.spin;
+  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.Ms);
   const Oxs_MeshValue<OC_REAL8m>& Ms_inverse = *(state.Ms_inverse);
+  const Oxs_MeshValue<OC_REAL8m>& Ms0_inverse = *(state.Ms0_inverse);
 
   // Downcast mesh
   const Oxs_CommonRectangularMesh* mesh
@@ -304,6 +308,7 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
         ++i;   ++x;
         continue;
       }
+      OC_REAL8m mi = Ms[i]*Ms0_inverse[i];
       OC_REAL8m* Arow = coef[region_id[i]];
       ThreeVector sum(0.,0.,0.);
       if(z>0 || zperiodic) {
@@ -311,7 +316,7 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
         if(z==0) j += xyzdim;
         OC_REAL8m Apair = Arow[region_id[j]];
         if(Apair!=0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
+          ThreeVector diff = Ms[j]*Ms0_inverse[j]*spin[j]-mi*base;
           OC_REAL8m dot = diff.MagSq();
           sum += Apair*wgtz*diff;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -322,7 +327,7 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
         if(y==0) j += xydim;
         OC_REAL8m Apair = Arow[region_id[j]];
         if(Apair!=0.0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
+          ThreeVector diff = Ms[j]*Ms0_inverse[j]*spin[j]-mi*base;
           OC_REAL8m dot = diff.MagSq();
           sum += Apair*wgty*diff;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -333,7 +338,7 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
         if(x==0) j += xdim;
         OC_REAL8m Apair = Arow[region_id[j]];
         if(Apair!=0.0 && Ms_inverse[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
+          ThreeVector diff = Ms[j]*Ms0_inverse[j]*spin[j]-mi*base;
           OC_REAL8m dot = diff.MagSq();
           sum += Apair*wgtx*diff;
           if(dot>thread_maxdot) thread_maxdot = dot;
@@ -343,19 +348,22 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
         OC_INDEX j = i+1;
         if(x==xdim-1) j -= xdim;
         OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgtx*(spin[j] - base);
+        if(Ms_inverse[j]!=0.0)
+          sum += Apair*wgtx*( Ms[j]*Ms0_inverse[j]*spin[j] - mi*base );
       }
       if(y<ydim-1 || yperiodic) {
         OC_INDEX j = i+xdim;
         if(y==ydim-1) j -= xydim;
         OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgty*(spin[j] - base);
+        if(Ms_inverse[j]!=0.0)
+          sum += Apair*wgty*( Ms[j]*Ms0_inverse[j]*spin[j] - mi*base );
       }
       if(z<zdim-1 || zperiodic) {
         OC_INDEX j = i+xydim;
         if(z==zdim-1) j -= xyzdim;
         OC_REAL8m Apair = Arow[region_id[j]];
-        if(Ms_inverse[j]!=0.0) sum += Apair*wgtz*(spin[j]- base);
+        if(Ms_inverse[j]!=0.0)
+          sum += Apair*wgtz*( Ms[j]*Ms0_inverse[j]*spin[j] - mi*base );
       }
 
       OC_REAL8m ei = base.x*sum.x + base.y*sum.y + base.z*sum.z;
@@ -386,159 +394,6 @@ void YY_LLBExchange6Ngbr::CalcEnergyA
 
   maxdot[threadnumber] = thread_maxdot;
 }
-
-
-void YY_LLBExchange6Ngbr::CalcEnergyLex
-(const Oxs_SimState& state,
- Oxs_ComputeEnergyDataThreaded& ocedt,
- Oxs_ComputeEnergyDataThreadedAux& ocedtaux,
- OC_INDEX node_start,
- OC_INDEX node_stop,
- int threadnumber
- ) const
-{
-  const Oxs_MeshValue<ThreeVector>& spin = state.spin;
-  const Oxs_MeshValue<OC_REAL8m>& Ms = *(state.Ms);
-
-  // Downcast mesh
-  const Oxs_CommonRectangularMesh* mesh
-    = dynamic_cast<const Oxs_CommonRectangularMesh*>(state.mesh);
-  if(mesh==NULL) {
-    String msg =
-      String("Import mesh (\"")
-      + String(state.mesh->InstanceName())
-      + String("\") to YY_LLBExchange6Ngbr::GetEnergyLex()"
-             " routine of object \"") + String(InstanceName())
-      + String("\" is not a rectangular mesh object.");
-    throw Oxs_ExtError(msg.c_str());
-  }
-
-  // If periodic, collect data for distance determination
-  // Periodic boundaries?
-  int xperiodic=0, yperiodic=0, zperiodic=0;
-  const Oxs_PeriodicRectangularMesh* pmesh
-    = dynamic_cast<const Oxs_PeriodicRectangularMesh*>(mesh);
-  if(pmesh!=NULL) {
-    xperiodic = pmesh->IsPeriodicX();
-    yperiodic = pmesh->IsPeriodicY();
-    zperiodic = pmesh->IsPeriodicZ();
-  }
-
-  OC_INDEX xdim = mesh->DimX();
-  OC_INDEX ydim = mesh->DimY();
-  OC_INDEX zdim = mesh->DimZ();
-  OC_INDEX xydim = xdim*ydim;
-  OC_INDEX xyzdim = xdim*ydim*zdim;
-
-  OC_REAL8m wgtx = 1.0/(mesh->EdgeLengthX()*mesh->EdgeLengthX());
-  OC_REAL8m wgty = 1.0/(mesh->EdgeLengthY()*mesh->EdgeLengthY());
-  OC_REAL8m wgtz = 1.0/(mesh->EdgeLengthZ()*mesh->EdgeLengthZ());
-
-  Nb_Xpfloat energy_sum = 0;
-  OC_REAL8m thread_maxdot = maxdot[threadnumber];
-  // Note: For maxangle calculation, it suffices to check
-  // spin[j]-spin[i] for j>i, or j<i, or various mixes of the two.
-
-  OC_INDEX x,y,z;
-  mesh->GetCoords(node_start,x,y,z);
-
-  OC_INDEX i = node_start;
-  while(i<node_stop) {
-    OC_INDEX xstop = xdim;
-    if(xdim-x>node_stop-i) xstop = x + (node_stop-i);
-    while(x<xstop) {
-      if(0 == Ms[i]) {
-        if(ocedt.energy) (*ocedt.energy)[i] = 0.0;
-        if(ocedt.H)      (*ocedt.H)[i].Set(0.,0.,0.);
-        if(ocedt.mxH)    (*ocedt.mxH)[i].Set(0.,0.,0.);
-        ++i;   ++x;
-        continue;
-      }
-      const OC_REAL8m emult = (-0.5*MU0)*Ms[i];
-
-      ThreeVector base = spin[i];
-
-      OC_REAL8m* lexrow = coef[region_id[i]];
-      ThreeVector sum(0.,0.,0.);
-      if(z>0 || zperiodic) {
-        OC_INDEX j = i-xydim;
-        if(z==0) j += xyzdim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        if(lexpair!=0.0 && Ms[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Ms[j]*lexpair*lexpair*wgtz*diff;
-          if(dot>thread_maxdot) thread_maxdot = dot;
-        }
-      }
-      if(y>0 || yperiodic) {
-        OC_INDEX j = i-xdim;
-        if(y==0) y+= xydim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        if(lexpair!=0.0 && Ms[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Ms[j]*lexpair*lexpair*wgty*diff;
-          if(dot>thread_maxdot) thread_maxdot = dot;
-        }
-      }
-      if(x>0 || xperiodic) {
-        OC_INDEX j = i-1;
-        if(x==0) j += xdim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        if(lexpair!=0.0 && Ms[j]!=0.0) {
-          ThreeVector diff = (spin[j] - base);
-          OC_REAL8m dot = diff.MagSq();
-          sum += Ms[j]*lexpair*lexpair*wgtx*diff;
-          if(dot>thread_maxdot) thread_maxdot = dot;
-        }
-      }
-      if(x<xdim-1 || xperiodic) {
-        OC_INDEX j = i+1;
-        if(x==xdim-1) j -= xdim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        sum += Ms[j]*lexpair*lexpair*wgtx*(spin[j] - base);
-      }
-      if(y<ydim-1 || yperiodic) {
-        OC_INDEX j = i+xdim;
-        if(y==ydim-1) j -= xydim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        sum += Ms[j]*lexpair*lexpair*wgty*(spin[j] - base);
-      }
-      if(z<zdim-1 || zperiodic) {
-        OC_INDEX j = i+xydim;
-        if(z==zdim-1) j -= xyzdim;
-        OC_REAL8m lexpair = lexrow[region_id[j]];
-        sum += Ms[j]*lexpair*lexpair*wgtz*(spin[j]- base);
-      }
-
-      OC_REAL8m ei = emult*(base.x*sum.x + base.y*sum.y + base.z*sum.z);
-      OC_REAL8m tx = base.y*sum.z - base.z*sum.y;
-      OC_REAL8m ty = base.z*sum.x - base.x*sum.z;
-      OC_REAL8m tz = base.x*sum.y - base.y*sum.x;
-
-      energy_sum += ei;
-      if(ocedt.energy)       (*ocedt.energy)[i] = ei;
-      if(ocedt.energy_accum) (*ocedt.energy_accum)[i] += ei;
-      if(ocedt.H)       (*ocedt.H)[i] = sum;
-      if(ocedt.H_accum) (*ocedt.H_accum)[i] += sum;
-      if(ocedt.mxH)       (*ocedt.mxH)[i] = ThreeVector(tx,ty,tz);
-      if(ocedt.mxH_accum) (*ocedt.mxH_accum)[i] += ThreeVector(tx,ty,tz);
-      ++i;   ++x;
-    }
-    x=0;
-    if((++y)>=ydim) {
-      y=0;
-      ++z;
-    }
-  }
-
-  ocedtaux.energy_total_accum += energy_sum.GetValue() * mesh->Volume(0);
-  /// All cells have same volume in an Oxs_RectangularMesh.
-
-  maxdot[threadnumber] = thread_maxdot;
-}
-
 
 void YY_LLBExchange6Ngbr::ComputeEnergyChunkInitialize
 (const Oxs_SimState& /* state */,
@@ -806,7 +661,7 @@ void YY_LLBExchange6Ngbr::ComputeEnergyChunk
     }
   }
   if(excoeftype == LEX_TYPE) {
-    CalcEnergyLex(state,ocedt,ocedtaux,node_start,node_stop,threadnumber);
+    //CalcEnergyLex(state,ocedt,ocedtaux,node_start,node_stop,threadnumber);
   } else {
     CalcEnergyA(state,ocedt,ocedtaux,node_start,node_stop,threadnumber);
   }

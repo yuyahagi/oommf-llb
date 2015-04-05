@@ -43,11 +43,6 @@ private:
                    Oxs_ComputeEnergyDataThreadedAux& ocedtaux,
                    OC_INDEX node_start,OC_INDEX node_stop,
                    int threadnumber) const;
-  void CalcEnergyLex(const Oxs_SimState& state,
-                     Oxs_ComputeEnergyDataThreaded& ocedt,
-                     Oxs_ComputeEnergyDataThreadedAux& ocedtaux,
-                     OC_INDEX node_start,OC_INDEX node_stop,
-                     int threadnumber) const;
 
   // Supplied outputs, in addition to those provided by Oxs_Energy.
   Oxs_ScalarOutput<YY_LLBExchange6Ngbr> maxspinangle_output;
