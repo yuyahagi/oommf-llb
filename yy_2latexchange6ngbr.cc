@@ -162,6 +162,8 @@ YY_2LatExchange6Ngbr::YY_2LatExchange6Ngbr(
 			 " both A and lex specified; only one should"
 			 " be given.");
   } else if(has_lex) {
+    throw Oxs_ExtError(this,"CalcEnergyLex not implemented.");
+
     excoeftype = LEX_TYPE;
     typestr = "lex";
     default_coef1 = GetRealInitValue("default_lex1",0.0);

@@ -414,6 +414,9 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       OC_REAL8m cell_alpha_t = alpha_t[i];
       OC_REAL8m cell_alpha_l = alpha_l[i];
       OC_REAL8m cell_gamma = gamma[i];
+      OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
+      OC_REAL8m cell_msq = cell_m*cell_m;
+      OC_REAL8m cell_m_inverse = Ms0_[i]*Ms_inverse_[i];
 
       // deterministic part
       scratch_t = mxH_[i];
@@ -421,7 +424,6 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
 
       if(do_precess) {
         dm_dt_t_[i]  = scratch_t;
-        dm_dt_t_[i]  *= Ms_[i]*Ms0_inverse_[i];
         dm_dt_l_[i].Set(0.0,0.0,0.0);
       } else {
         dm_dt_t_[i].Set(0.0,0.0,0.0);
@@ -439,33 +441,53 @@ void YY_LLBEulerEvolve::Calculate_dm_dt(
       }
       scratch_t ^= spin_[i];
       // -|gamma|((mx(H+hFluct_t))xm) = |gamma|(mx(mx(H+hFluct_t)))
-      scratch_t *= -cell_alpha_t*Ms0_[i]*Ms_inverse_[i]; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
+      scratch_t *= -cell_alpha_t*cell_m_inverse; // -|alpha*gamma|(mx(mx(H+hFluct_t)))
       dm_dt_t_[i] += scratch_t;
 
       // Longitudinal terms
-      OC_REAL8m temp = spin_[i]*total_field[i];
-      if(temperature[i] != 0) {
-        OC_REAL8m cell_m = Ms_[i]*Ms0_inverse_[i];
-        OC_REAL8m cell_msq = cell_m*cell_m;
-        if(temperature[i] < Tc[i]) {
-          temp += 0.5/chi_l[i]
-            *(1-cell_msq/(m_e[i]*m_e[i]))*cell_m;
-        } else {
-          temp += -1.0/chi_l[i]
-            *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*cell_msq)*cell_m;
-        }
-        temp *= cell_gamma*cell_alpha_l*Ms0_[i]*Ms_inverse_[i];
-        scratch_l = temp*spin_[i];
-        if((scratch_l*spin_[i])*fixed_timestep < -1.0) {
-          // scratch_l || spin_[i]
-          scratch_l.MakeUnit();
-        }
-        dm_dt_l_[i] += scratch_l;
+      OC_REAL8m temp = spin_[i]*total_field_[i];
+      ThreeVector tempfield;
+      //if(temperature[i] < Tc[i]) {
+      if(temperature[i] != 0.0) {
+        //temp += 0.5/chi_l[i]
+        //  *(1-cell_msq/(m_e[i]*m_e[i]));
 
-        if(use_stochastic) {
-          // Longitudinal stochastic field parallel to spin
-          dm_dt_l_[i] += hFluct_l[i].x*spin_[i]*Ms0_[i]*Ms_inverse_[i];
+        OC_REAL8m beta = 1.0/(KBoltzmann*temperature[i]);
+        OC_REAL8m A = beta*fabs(J[i]);
+        OC_REAL8m B = Langevin(A*cell_m);
+        OC_REAL8m dB = LangevinDeriv(A*cell_m);
+        if( temperature[i]<Tc[i] || 1-B/cell_m>0 ) {
+          // This condition prevents unstable bursts of spin polarizations
+          // when m ~ 0.
+          tempfield -= (1-B/cell_m)/(MU0*mu[i]*beta*dB)*spin_[i];
+          temp = spin_[i]*tempfield;
+          temp *= cell_gamma*cell_alpha_l*cell_m_inverse;
+
+          scratch_l = temp*spin_[i];
+          dm_dt_l_[i] += scratch_l;
         }
+      } /*else {
+        temp += -1.0/chi_l[i]
+          *(1+0.6*(Tc[i]/(temperature[i]-Tc[i]))*cell_msq);
+        temp *= cell_gamma*cell_alpha_l*cell_m_inverse;
+        scratch_l = temp*spin_[i];
+        dm_dt_l_[i] += scratch_l;
+      }*/
+
+      // Check for overshooting
+      scratch_l = dm_dt_l_[i]*fixed_timestep;
+      scratch_l += spin_[i];
+      if( scratch_l*spin_[i]<0.0 ) {
+        dm_dt_l_[i] = -1*spin_[i];
+        dm_dt_l_[i].x /= fixed_timestep;
+        dm_dt_l_[i].y /= fixed_timestep;
+        dm_dt_l_[i].z /= fixed_timestep;
+      }
+
+      if(use_stochastic) {
+        // Longitudinal stochastic field parallel to spin
+        dm_dt_l_[i] += hFluct_l[i]*cell_m_inverse;
+        dm_dt_t_[i] += hFluct_l[i]*cell_m_inverse;
       }
     }
   }
@@ -674,8 +696,7 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
 
     // For improved accuracy, adjust step vector so that
     // to first order m0 + adjusted_step = v/|v| where
-    // v = m0 + step.  (????)
-    // maybe adjusted_mo + adjusted_step is meant here??
+    // v = m0 + step.
     OC_REAL8m adj = 0.5 * tempspin.MagSq();
     tempspin -= adj*cstate.spin[i];
     tempspin *= 1.0/(1.0+adj);
@@ -691,11 +712,14 @@ YY_LLBEulerEvolve::Step(const Oxs_TimeDriver* driver,
     // Both of wMs and wMs_inverse should be updated at the same time.
     OC_REAL8m Ms_temp = wMs[i];
     wMs[i] = sqrt(tempspin.MagSq())*Ms_temp;
-    if(wMs[i] <= 0.0) {
+    if(tempspin*cstate.spin[i]<0.0) {  // Dot product
       // If spin overshoots to the opposite direction with stochastic kick,
       // keep Ms positive and flip spin direction.
-      wMs[i] *= -1;
       workstate.spin[i] *= -1;
+    }
+    if(wMs[i] > (*cstate.Ms0)[i]) {
+      // Ms cannot be >Ms0.
+      wMs[i] = (*cstate.Ms0)[i];
     }
     if(wMs[i] != 0.0) {
       wMs_inverse[i] = 1.0/wMs[i];
@@ -871,10 +895,11 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
   Update_m_e_chi_l(/*tol=*/1e-4);
 
   for(i=0;i<size;i++) {
-    alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
     if(temperature[i] > Tc[i]) {
+      alpha_t[i] = 2./3.*alpha_t0[i];
       alpha_l[i] = alpha_t[i];
     } else {
+      alpha_t[i] = alpha_t0[i]*(1-temperature[i]/(3*Tc[i]));
       alpha_l[i] = alpha_t0[i]*2*temperature[i]/(3*Tc[i]);
     }
 
@@ -892,7 +917,6 @@ void YY_LLBEulerEvolve::UpdateMeshArrays(const Oxs_SimState& state)
     hFluctVarConst_l[i] = 2*cell_alpha_l*cell_gamma;
     hFluctVarConst_l[i] *= kB_T[i]*Ms0_inverse[i];
     hFluctVarConst_l[i] /= MU0*cell_vol;
-    // TODO: Verify use of MU0
   }
 
   mesh_id = mesh->Id();
@@ -934,13 +958,16 @@ void YY_LLBEulerEvolve::Update_m_e_chi_l(OC_REAL8m tol_in = 1e-4) const
 OC_REAL8m YY_LLBEulerEvolve::Langevin(OC_REAL8m x) const
 {
   OC_REAL8m temp = exp(2*x)+1;
-  temp /= exp(2*x)-1; // temp == coth(x);
+  if(!Nb_IsFinite(temp)) return x>0 ? 1.0 : -1.0; // Large input
+  temp /= temp-2; // temp = coth(x);
   return temp-1/x;
 }
 
 OC_REAL8m YY_LLBEulerEvolve::LangevinDeriv(OC_REAL8m x) const
 {
+  if(fabs(x)<OC_REAL4_EPSILON) return 1./3.;
   OC_REAL8m temp = sinh(x);
+  if(!Nb_IsFinite(temp)) return 1.0/(x*x); // Large input
   return -1.0/(temp*temp)+1.0/(x*x);
 }
 
