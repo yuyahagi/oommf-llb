@@ -32,6 +32,7 @@
 #include "meshvalue.h"
 #include "rectangularmesh.h"
 #include "scalarfield.h"
+#include "oxswarn.h"
 
 #include "yy_llbeulerevolve.h"
 
@@ -39,6 +40,14 @@
 OXS_EXT_REGISTER(YY_LLBEulerEvolve);
 
 /* End includes */
+
+// Revision information
+static const Oxs_WarningMessageRevisionInfo revision_info
+  (__FILE__,
+   "$Revision:$",
+   "$Date:$",
+   "$Author:$",
+   "Yu Yahagi (yuyahagi2@gmail.com)");
 
 void YY_LLBEulerEvolve::UpdateStageTemperature(const Oxs_SimState& state)
 {
@@ -219,6 +228,22 @@ YY_LLBEulerEvolve::YY_LLBEulerEvolve(
      &YY_LLBEulerEvolve::UpdateDerivedOutputs);
 
   VerifyAllInitArgsUsed();
+
+  // Check energy terms
+  OC_INDEX energy_obj_count = newdtr->GetEnergyObjCount();
+  for(OC_INDEX i=0; i<energy_obj_count; i++) {
+    if( !IsSupportedEnergy(newdtr->GetEnergyObj(i)) ) {
+      static Oxs_WarningMessage unsupportedenergy(-1);
+      char buf[1024];
+      Oc_Snprintf(buf,sizeof(buf),
+                  "%s is unsupported by YY_LLBEulerEvolve for LLB"
+                  " simulations. It may still run but the validity of"
+                  " calculation is now questionable.",
+                  newdtr->GetEnergyObj(i)->ClassName() );
+      unsupportedenergy.Send(revision_info,OC_STRINGIFY(__LINE__),buf);
+    }
+  }
+
 }   // end Constructor
 
 OC_BOOL YY_LLBEulerEvolve::Init()
@@ -1033,4 +1058,17 @@ OC_REAL8m YY_LLBEulerEvolve::Gaussian_Random(const OC_REAL8m muGaus,
 
   gaus2_isset = false;
   return gaus2;
+}
+
+OC_BOOL YY_LLBEulerEvolve::IsSupportedEnergy(const Oxs_Energy* obj) const
+{
+  static const OC_UINT4m size = 
+    sizeof(SupportedEnergyNameList)/sizeof(SupportedEnergyNameList[0]);
+
+  for(OC_INDEX i=0; i<size; i++) {
+    if( !strcmp(obj->ClassName(),SupportedEnergyNameList[i].c_str()) ) {
+      return 1;
+    }
+  }
+  return 0;
 }
