@@ -28,10 +28,10 @@ In order to circumvent the fundamental restriction of conventional micromagnetic
 
 1. Copy source codes (\*.cc and \*.h) in this directory to (OOMMF_DIR)/app/oxs/local/ where (OOMMF_DIR) is the directory OOMMF is installed in your system.
 
-2. You also need to copy files in base_src/ and ext_src/ to (OOMMF_DIR)/app/oxs/base/ and (OOMMF_DIR)/app/oxs/ext/, respectively. These files will replace the original OOMMF source files so keep the original as backup or 
+2. You also need to copy files in base_src/ and ext_src/ to (OOMMF_DIR)/app/oxs/base/ and (OOMMF_DIR)/app/oxs/ext/, respectively. These files will replace the original OOMMF source files so keep the original as backup or use Makefile's as described below, which will automatically keep the backup.
 
 3. Go to (OOMMF_DIR) and run pimake as
-    
+
     ```tclsh oommf.tcl pimake```
 
 ### Makefile configuration ###
@@ -50,11 +50,11 @@ Principles
 
 ### Stochastic LLB micromagnetics ###
 
-The stochastic evolver in this extension module is based on eq. (5) in [Evans et al, Phys. Rev. B 85, 014433 (2012)](http://journals.aps.org/prb/abstract/10.1103/PhysRevB.85.014433), where the new stochastic form of the LLB equation was shown to be consistent with Boltzmann distribution at higher temperature, unlike previously proposed form (eq. (1)). 
+The stochastic evolver in this extension module is based on eq. (5) in [Evans et al, Phys. Rev. B 85, 014433 (2012)](http://journals.aps.org/prb/abstract/10.1103/PhysRevB.85.014433), where the new stochastic form of the LLB equation was shown to be consistent with Boltzmann distribution at higher temperature, unlike previously proposed form (eq. (1)).
 
 ### Coupled LLB equation for ferrimagnets ###
 
-An equation of motion for exchange-coupled spin sublattices (ferrimagnets) is derived in [Atxitia et al, Phys. Rev. B 86, 104414 (2012)](http://journals.aps.org/prb/abstract/10.1103/PhysRevB.86.104414). Each sublattice obeys the LLB equation with additional interlattice exchange terms in Heff, derived with mean field approximation. In oommf-llb, this is calculated in YY_2LatExchange6Ngbr. Note that, this formalism does not allow T > Tc. 
+An equation of motion for exchange-coupled spin sublattices (ferrimagnets) is derived in [Atxitia et al, Phys. Rev. B 86, 104414 (2012)](http://journals.aps.org/prb/abstract/10.1103/PhysRevB.86.104414). Each sublattice obeys the LLB equation with additional interlattice exchange terms in Heff, derived with mean field approximation. In oommf-llb, this is calculated in YY_2LatExchange6Ngbr. Instead of the final form (eq. (35)), more general formalism eq. (13) is used both for T < Tc and T > Tc.
 
 In the above-mentioned article, a single-macrospin model is assumed with no spatial variation. oommf-llb also incorporates the other spatially-varying energy contributions as in standard micromagnetic framework. These energy terms include the intralattice exchange and demagnetization field, as well as the ability to specify nonuniform parameters and temperature across the simulation mesh.
 
@@ -63,6 +63,8 @@ Oxs classes
 -----------
 
 ### Single-lattice LLB ###
+
+For single-lattice LLB simulations, you need to use YY\_LLBEulerEvolve. For exchange interaction and anisotropies YY\_LLB\* energy terms needs to be used replacing corresponding Oxs\_\* energy terms. This is for correctly scale the energy terms according to the magnitude of the mean cell magnetization. At this point, YY\_LLBExchange6Ngbr and YY\_LLBUniaxialAnisotropy have been implemented. The simulation can still run with improper Oxs\_\* energy terms but with false results and OOMMF shows a warning message. For Zeeman and demagnetization terms, standard Oxs\_\* energy terms work fine.
 
 #### YY_LLBEulerEvolve ####
 
@@ -84,15 +86,33 @@ Oxs classes
         use_stochastic  < 0 | 1 >
     }
 
+#### YY_LLBExchange6Ngbr ####
+
+    Specify YY_LLBExchange6Ngbr {
+        default_A    value
+        atlas        atlas_spec
+        A {
+            region-1 region-1 A11
+            region-1 region-2 A12
+            ...
+            region-m region-n Amn
+        }
+    }
+
+#### YY_LLBUniaxialAnisotropy ####
+
+    Specify YY_LLBUniaxialAnisotropy {
+        K1   value
+        axis { ex ey ez }
+    }
+
 ### Two-lattice LLB ###
 
 For two-lattice simulations, you need to use YY\_2LatEulerEvolve, YY\_2LatTimeDriver, and other YY\_2Lat\* energy terms, replacing Oxs\_EulerEvolve, Oxs\_TimeDriver, and other Oxs\_\* energy terms. The simulation can still run with improper Oxs\_\* energy terms but with false results.
 
-At this point, temperature above Tc is not supported. YY_2LatExchange6Ngbr throws and exception when T > Tc. A workaround is to simulate the two separate systems using YY_LLBEulerEvolve.
-
 #### YY_2LatEulerEvolve ####
 
-    Specify YY_2LatEulerEvolve {
+    Specify YY_2LatEulerEvolve:name {
         do_precess      < 0 | 1 >
         gamma_LL1       < value | scalarfield_spec >
         gamma_LL2       < value | scalarfield_spec >
@@ -172,7 +192,7 @@ Programmer's guide
 
 #### Oxs_SimState ####
 
-The following lines contain the `diff` of the Oxs_SimState class definition. Pointers to Ms and Ms_inverse `const` meshvalues were replaced with pointers with non-`const` mesh values in order to allow change in magnitude of magnetization. Accordingly, other Oxs classes (Oxs_Driver, Oxs_TimeDriver, etc) were modified to handle Ms and Ms_inverse with different type. In case the energy terms require Ms at T = 0K, Ms0 and Ms0_inverse is added.
+The following lines contain the `diff` of the Oxs_SimState class definition. Pointers to Ms and Ms_inverse `const` meshvalues were replaced with pointers with non-`const` mesh values in order to allow change in magnitude of magnetization. Accordingly, other Oxs classes (Oxs_Driver, Oxs_TimeDriver, etc) were modified to handle Ms and Ms_inverse with different type. In case the energy terms require Ms at T = 0K, Ms0 and Ms0_inverse were added.
 
 Additional pointers to temperature T, Currie temperature Tc, equilibrium magnetization polarization m_e, and longitudinal susceptibility chi_l are included. Memory assignment to these variables are done in YY_LLBEulerEvolve for 1-lattice simulations, or in YY_2LatExchange6Ngbr for 2-lattice simulations.
 
@@ -187,7 +207,7 @@ For two-lattice simulations, three Oxs_SimState instances are used to express th
     +  Oxs_MeshValue<OC_REAL8m>* Ms0;
     +  Oxs_MeshValue<OC_REAL8m>* Ms0_inverse;
     +
-    +  // For calculation of the temperature-dependent parameters (e.g., 
+    +  // For calculation of the temperature-dependent parameters (e.g.,
     +  // anisotropy and exchange), include a pointer to temperature and related
     +  // parameters.
     +  mutable Oxs_MeshValue<OC_REAL8m> const* T;
